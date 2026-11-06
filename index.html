@@ -1254,6 +1254,9 @@
   .adm-tphist{margin-top:10px}
   .adm-tphist summary{cursor:pointer;font-size:12px;color:#9aa1a8}
 
+/* етап 7.48: телефон і сповіщення Bgram — лише під час бою, ніколи в меню */
+body.s7-menu #bgPhone,body.s7-menu #bgNote{display:none!important}
+
 </style>
 </head>
 <body>
@@ -13845,6 +13848,8 @@ function initStage7(map, maplibregl){
     if (GAME.on && !GAME.suspended && !GAME.over && GAME.ctx !== "online") suspendGame();
     if (scr) UI.scr = scr;
     body.classList.add("s7-menu"); gmHide(); hideResults();
+    if (S7.phone && S7.phone.isOpen()) S7.phone.toggle(false);      // етап 7.48: телефон — лише під час бою, не в меню
+    { const bn = document.getElementById("bgNote"); if (bn) bn.classList.remove("on"); }
     showGameLayers(!GAME.on);
     menuCamera(); demoStart(); menuRender();
   }
@@ -15574,7 +15579,10 @@ function phOutcome(tr, kind, pos){
 }
 /* ---------- крок: що в повітрі — пости в канали ---------- */
 function phStep(){
-  if (!GAME.on || !GAME.st){ return; }
+  if (!GAME.on || !GAME.st || document.body.classList.contains("s7-menu")){      // етап 7.48: поза боєм телефон закритий
+    if (PH.open) phToggle(false);
+    return;
+  }
   if (PH.gid !== GAME.st){ PH.gid = GAME.st; PH.posts = { ua: [], ru: [] }; PH.seen = { ua: 0, ru: 0 }; PH.track.clear(); PH.al = { ua: new Map(), ru: new Map() }; PH.carSeen = new Set(); PH.lastT = null; phSig(); }
   if (PH.lastT === SIM.t){ phRender(); return; } PH.lastT = SIM.t;      // пауза — пости не нові, але мова / вигляд оновлюються
   phCities();
