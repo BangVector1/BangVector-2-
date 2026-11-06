@@ -1,1 +1,1 @@
-const WORKER\_URL = 'https://bv2api.khilchenko-kiril.workers.dev';
+const WORKER_URL = 'https://bv2api.khilchenko-kiril.workers.dev';
