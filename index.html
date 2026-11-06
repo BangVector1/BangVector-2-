@@ -1562,6 +1562,7 @@ const SITES = [{"t":"ground","n":"Рубіж «Брянськ»","d":"Трохи
    Без зв'язку із сервером гра теж працює (як звичайна версія). */
 (function(){
   "use strict";
+  window.BV_SITEV = 1;      // версія для сайту: турніри створює лише адміністрація
   var LS = {
     get: function(k){ try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: function(k, v){ try { localStorage.setItem(k, v); } catch (e) {} }
@@ -12688,7 +12689,12 @@ const I18N_DICT = {"Турніри на вибування: учасники г�
   "Введіть ключ власників":["Введите ключ владельцев","Enter the owners' key"],
   "Ключ власників уже використано двічі":["Ключ владельцев уже использован дважды","The owners' key has already been used twice"],
   "Ключ недійсний — перевірте, чи правильно його введено":["Ключ недействителен — проверьте, правильно ли он введён","Invalid key — check that it was typed correctly"],
-  "Права адміністратора активовано — «Адмін панель» у профілі":["Права администратора активированы — «Админ-панель» в профиле","Admin rights activated — \"Admin panel\" is in your profile"]};            // { "укр. фраза": ["рос.", "англ."] }
+  "Права адміністратора активовано — «Адмін панель» у профілі":["Права администратора активированы — «Админ-панель» в профиле","Admin rights activated — \"Admin panel\" is in your profile"],
+  "Лише для адміністрації гри":["Только для администрации игры","Game admins only"],
+  "Турніри створює адміністрація BangVector 2 — реєструйтеся в оголошених змаганнях.":["Турниры создаёт администрация BangVector 2 — регистрируйтесь в объявленных соревнованиях.","Tournaments are created by the BangVector 2 admins — sign up for announced competitions."],
+  "Турнірів поки немає — адміністрація оголосить нові змагання.":["Турниров пока нет — администрация объявит новые соревнования.","No tournaments yet — the admins will announce new competitions."],
+  "Турніри створює лише адміністрація гри":["Турниры создаёт только администрация игры","Only the game admins can create tournaments"],
+  "входів · без обмежень":["входов · без ограничений","sign-ins · unlimited"]};            // { "укр. фраза": ["рос.", "англ."] }
 const LANGS = [["uk", "УКР", "Українська", "Українська"], ["ru", "РУС", "Російська", "Русский"], ["en", "ENG", "Англійська", "English"]];
 const I18N = { lang: "uk", li: -1, cache: new Map(), re: null, let: null, keys: null, orig: new WeakMap(), attr: new WeakMap(), obs: null, busy: false };
 const CYR_RE = /[А-ЯҐЄІЇа-яґєії]/;
@@ -13913,7 +13919,7 @@ function initStage7(map, maplibregl){
           PROF.hist.slice(-5).reverse().map(x => `<div class="prow"><div class="pi"><b>${escH((MODES[x.mode] || MODES.ready).n)} · ${SIDE_N[x.side] || ""}</b><small>${x.surr ? "Капітуляція" : x.peace ? "Мир" : x.w === x.side ? "Перемога" : x.w === "draw" ? "Нічия" : "Поразка"}${x.ctx === "online" ? " · мережевий бій" : ""} · ${new Date(x.at).toLocaleDateString("uk-UA")}</small></div><span class="tag ok">+${fmtN(x.xp)} XP</span></div>`).join("") + `</div>`;
       }
       h += `<div class="mm-sec"><span>Друзі</span><b>${PROF.friends.length}</b></div>` +
-        `<div class="s7row"><input class="s7in" id="frId" maxlength="8" placeholder="ID гравця, напр. ${genId(8)}" autocomplete="off" spellcheck="false"><button class="s7b" data-s7="fradd">Заявка</button></div>`;
+        `<div class="s7row"><input class="s7in" id="frId" maxlength="40" placeholder="ID гравця, напр. ${genId(8)}" autocomplete="off" spellcheck="false"><button class="s7b" data-s7="fradd">Заявка</button></div>`;
       const q = ($("frId") && $("frId").value || "").trim().toUpperCase();
       const srv = !!(S7.site && S7.site.on());
       if (srv) S7.site.players(PROF.friends.map(f => f.id).concat(PROF.reqIn.map(r => r.id), PROF.reqOut.map(r => r.id)));      // етап 7.45: свіжі дані друзів із сервера
@@ -13975,9 +13981,11 @@ function initStage7(map, maplibregl){
     },
     tours(){
       const mine = new Map(NET.tours.map(t => [t.tid, t]));
-      const all = NET.lob.state.tours.filter(t => !mine.has(t.tid)).concat(NET.tours);
+      const all = NET.lob.state.tours.filter(t => !mine.has(t.tid) && (!(S7.site && S7.site.tourOk) || S7.site.tourOk(t))).concat(NET.tours);
+      const canT = !(S7.site && S7.site.canTour) || S7.site.canTour();      // етап 7.47: на сайті турніри створює лише адміністрація
+      const tBtn = mbtn("tnew", "", ICO.tour, "Створити турнір", canT ? "2, 4 або 8 учасників" : "Лише для адміністрації гри", "", !NET.open || !canT, "mbig");
       if (UI.tour){ const t = all.find(x => x.tid === UI.tour); if (t) return scrTour(t); UI.tour = null; }
-      let h = top("Бойові змагання") + `<div class="mm-note">Турніри на вибування: учасники грають матчі в приватних кімнатах, переможець проходить далі. Організатор веде сітку й має бути в мережі.</div>` + `<div class="mm-acts-in">${mbtn("tnew", "", ICO.tour, "Створити турнір", "2, 4 або 8 учасників", "", !NET.open, "mbig")}</div>` +
+      let h = top("Бойові змагання") + `<div class="mm-note">Турніри на вибування: учасники грають матчі в приватних кімнатах, переможець проходить далі. Організатор веде сітку й має бути в мережі.</div>` + (canT ? "" : `<div class="mm-note">Турніри створює адміністрація BangVector 2 — реєструйтеся в оголошених змаганнях.</div>`) + `<div class="mm-acts-in">${tBtn}</div>` +
         `<div class="mm-sec"><span>Турніри</span><b>${all.length}</b></div>`;
       h += all.length ? all.map(t => {
         const joined = t.players.some(p => p.id === PROF.id), mm = tourMyMatch(t);
@@ -13985,8 +13993,8 @@ function initStage7(map, maplibregl){
           `<div class="mm-note" style="margin:8px 0 0">${escH((MODES[t.mode] || MODES.duel).n)} · учасників ${t.players.length}/${t.size} · організатор <b>${escU(t.org.name)}</b>${t.champ ? ` · переможець: <b>${escH((t.players.find(p => p.id === t.champ) || {}).name || t.champ)}</b>` : ""}</div>` +
           `<div class="rc-bot"><button class="s7b ghost" data-s7="tview" data-v="${t.tid}">Сітка</button>` +
           (mm ? `<button class="s7b" data-s7="tplay" data-v="${t.tid}">Мій матч</button>` : t.status === "reg" && !joined ? `<button class="s7b blue" data-s7="tjoin" data-v="${t.tid}" ${!NET.open ? "disabled" : ""}>Взяти участь</button>` : joined ? `<span class="tag ok">ви учасник</span>` : "") + `</div></div>`;
-      }).join("") : `<div class="mm-note">${NET.open ? "Турнірів поки немає — створіть перший." : "Очікуємо підключення до мережі…"}</div>`;
-      return { side: h, acts: `<div class="mm-acts">${mbtn("tnew", "", ICO.tour, "Створити турнір", "2, 4 або 8 учасників", "", !NET.open, "mbig")}</div>` };
+      }).join("") : `<div class="mm-note">${!NET.open ? "Очікуємо підключення до мережі…" : canT ? "Турнірів поки немає — створіть перший." : "Турнірів поки немає — адміністрація оголосить нові змагання."}</div>`;
+      return { side: h, acts: `<div class="mm-acts">${tBtn}</div>` };
     }
   };
   function scrTour(t){
@@ -15213,7 +15221,15 @@ function initStage7(map, maplibregl){
       case "rename": return mdlRename();
       case "renok": { const n = clipT($("mdlName").value, 22); if (n){ PROF.name = n; saveProf(); lobbyHb(); } modalClose(); return menuRender(); }
       case "copy": { const t = v; try { navigator.clipboard.writeText(t).then(() => toast("Скопійовано: " + t), () => toast(t)); } catch (e) { toast(t); } return; }
-      case "fradd": { const msg = friendRequest($("frId").value); toast(msg || "Заявку в друзі надіслано"); if (!msg) $("frId").value = ""; return menuRender(); }
+      case "fradd": {
+        const raw = ($("frId").value || "").replace(/[\s-]+/g, "");
+        if (raw.length >= 20){      // етап 7.47: ключ власників у полі ID → адмін-панель на цьому пристрої
+          if (!(S7.site && S7.site.adminKey)) return toast("ID гравця — 8 латинських літер і цифр");
+          S7.site.adminKey(raw).then(r => { if (r.ok){ const e = $("frId"); if (e) e.value = ""; } else toast(r.err === "net" ? "Немає зв'язку із сервером гри — спробуйте пізніше" : "ID гравця — 8 латинських літер і цифр"); menuRender(); });
+          return;
+        }
+        const msg = friendRequest($("frId").value); toast(msg || "Заявку в друзі надіслано"); if (!msg) $("frId").value = ""; return menuRender();
+      }
       case "rfadd": { const msg = friendRequest(v); toast(msg || "Заявку в друзі надіслано"); if (S7.mdl === "lb") mdlLb(); return menuRender(); }
       case "facc": { const p = PROF.reqIn.find(r => r.id === v); friendAccept(v, p); toast("Заявку прийнято"); return menuRender(); }
       case "fdec": friendDecline(v); return menuRender();
@@ -15251,10 +15267,10 @@ function initStage7(map, maplibregl){
         if (GAME.on && !GAME.suspended && !GAME.over && !inMenu()){ toast("Спершу завершіть або перервіть поточний бій (кнопка «Меню»)"); return; }
         roomJoin(v, "player"); return menuOpen("online");
       case "chatsend": { const i = $(v); if (i && i.value.trim()){ chatSend(i.value); i.value = ""; } return; }
-      case "tnew": return mdlTour();
+      case "tnew": if (S7.site && S7.site.canTour && !S7.site.canTour()) return toast("Турніри створює лише адміністрація гри"); return mdlTour();
       case "tnmode": UI.tn.name = $("mdlTn").value; UI.tn.mode = v; return mdlTour();
       case "tnsize": UI.tn.name = $("mdlTn").value; UI.tn.size = +v; return mdlTour();
-      case "tngo": { const t = tourCreate({ name: $("mdlTn").value, mode: UI.tn.mode, size: UI.tn.size, join: true }); modalClose(); UI.tour = t.tid; return menuRender(); }
+      case "tngo": { if (S7.site && S7.site.canTour && !S7.site.canTour()){ modalClose(); return toast("Турніри створює лише адміністрація гри"); } const t = tourCreate({ name: $("mdlTn").value, mode: UI.tn.mode, size: UI.tn.size, join: true }); modalClose(); UI.tour = t.tid; return menuRender(); }
       case "tview": UI.tour = v; return menuRender();
       case "tback": UI.tour = null; return menuRender();
       case "tjoin": { const t = NET.lob.state.tours.concat(NET.tours).find(x => x.tid === v); if (t) tourJoin(t); return menuRender(); }
@@ -16352,12 +16368,12 @@ S7.shop = { sync: bcBalSync, ICO: BC_ICO, levelUp: bcLevelUp, upCard: bcUpCard, 
    • кожні ~2 хв гра надсилає «сигнал присутності» (онлайн) і стислий профіль (для адмін-панелі);
    • у відповідь отримує Bcoin, які видала адміністрація, і свою галочку;
    • галочки всіх гравців (червона, синя, зелена) — біля імен у профілі, лідерах, кімнатах, чаті;
-   • адмін-панель (лише на пристрої, де введено ключ власників — адреса сайту з ?admin): заявки на поповнення,
+   • адмін-панель (лише на пристрої, де введено ключ власників — у полі ID друга або адреса сайту з ?admin): заявки на поповнення,
      Bcoin і галочки за ID гравця, інформація про гравця, онлайн і відвідування.
    ====================================================================== */
 const SITE = (() => {
   const g = window.BV_GATE || null;
-  return { on: !!(g && g.api && g.dev), api: g ? g.api : "", dev: g ? g.dev : "", admin: !!(g && g.admin), ticks: {}, tick: null, ack: [], sig: "", busy: false, tT: 0,
+  return { on: !!(g && g.api && g.dev), build: !!window.BV_SITEV, adm: null, api: g ? g.api : "", dev: g ? g.dev : "", admin: !!(g && g.admin), ticks: {}, tick: null, ack: [], sig: "", busy: false, tT: 0,
     onl: new Map(), pl: {}, lbd: {}, lbT: {}, onN: null, mack: [], mDone: new Set(), plT: {}, plQ: new Set(), plBusy: false, tack: [], tpN: 0, tpLast: -1 };
 })();
 const TICK_C = { red: "#ff3b30", blue: "#2f8cff", green: "#30c85e" };
@@ -16450,7 +16466,20 @@ function siteRequeue(ack, mack, tack){
 async function siteTopup(o){ if (!SITE.on) return null; try { const r = await siteCall("/api/topup", o); if (r && r.ok) setTimeout(sitePing, 3000); return r; } catch (e) { return null; } }
 async function siteTicks(){
   if (!SITE.on) return;
-  try { const r = await siteCall("/api/ticks"); if (r && r.ok && r.t){ const a = JSON.stringify(SITE.ticks), b = JSON.stringify(r.t); SITE.ticks = r.t; if (a !== b) S7.menuRender && S7.menuRender(); } } catch (e) {}
+  try {
+    const r = await siteCall("/api/ticks");
+    if (r && r.ok && r.t){
+      const a = JSON.stringify(SITE.ticks) + JSON.stringify(SITE.adm ? [...SITE.adm] : null), b = JSON.stringify(r.t) + JSON.stringify(Array.isArray(r.a) ? r.a : null);
+      SITE.ticks = r.t; if (Array.isArray(r.a)) SITE.adm = new Set(r.a);
+      if (a !== b) S7.menuRender && S7.menuRender();
+    }
+  } catch (e) {}
+}
+/* турніри: на сайті створює лише адміністрація; іншим показуються турніри власників (і ті, де гравець уже учасник) */
+function siteCanTour(){ return !SITE.build || (SITE.on && SITE.admin); }
+function siteTourOk(t){
+  if (!SITE.build || !(SITE.adm instanceof Set) || !t) return true;
+  return !!((t.org && SITE.adm.has(t.org.id)) || (t.players || []).some(p => p && p.id === PROF.id));
 }
 /* ======================================================================
    СПІЛЬНІ ДАНІ З СЕРВЕРА: список лідерів (усі гравці сайту), профілі за ID (друзі, пошук), хто онлайн,
@@ -16584,7 +16613,7 @@ function admStRender(){
   const tile = (n, v, sub) => `<div class="adm-tile"><b>${v}</b><span>${n}</span>${sub ? `<small>${sub}</small>` : ""}</div>`;
   const row = (n, o) => `<tr><td>${n}</td><td>${fmtN(o.day)}</td><td>${fmtN(o.week)}</td><td>${fmtN(o.total)}</td></tr>`;
   e.innerHTML = `<div class="adm-tiles">${tile("Онлайн зараз", `<i class="odot on"></i>${fmtN(s.online)}`)}${tile("Гравців", s.players != null ? fmtN(s.players) : "—", "профілів на сервері")}` +
-    `${tile("Пристроїв", fmtN(s.devices), `власників: ${s.admins}`)}${tile("Ключ власників", `${s.ownerLeft} / 2`, "активацій залишилось")}</div>` +
+    `${tile("Пристроїв", fmtN(s.devices), `власників: ${s.admins}`)}${s.ownerUses != null ? tile("Ключ власників", fmtN(s.ownerUses), "входів · без обмежень") : tile("Ключ власників", `${s.ownerLeft} / 2`, "активацій залишилось")}</div>` +
     `<table class="adm-tb"><tr><th></th><th>Сьогодні</th><th>Тиждень</th><th>Загалом</th></tr>${row("Відвідування гри", s.opens)}${row("Унікальні відвідувачі", s.uniq)}` +
     `${row("Онлайн (пік)", s.peak)}${row("Нові пристрої", s.act)}</table>` +
     (s.recent && s.recent.length ? `<div class="adm-t" style="margin-top:10px"><span>Нещодавні командири</span><small>натисніть, щоб підставити ID</small></div><div class="adm-rec">` +
@@ -16618,18 +16647,28 @@ function admLoginOpen(n){
     `<div class="foot"><button class="s7b ghost" data-s7="mdlx">Скасувати</button><button class="s7b" data-adm="login">Увійти</button></div>`, false, "admlogin");
   setTimeout(() => { const e = admEl("admLk"); if (e) e.focus(); }, 80);
 }
+/* ключ власників → права адміністратора на цьому пристрої (без обмежень кількості пристроїв) */
+async function admKeyTry(raw){
+  const key = String(raw || "").trim().toLowerCase().replace(/[\s-]+/g, "");
+  if (!SITE.on) return { ok: false, err: "net" };
+  const r = await siteCall("/api/activate", { key, own: 1, ua: navigator.userAgent }).catch(() => null);
+  if (!r || !r.ok || !r.admin) return { ok: false, err: r && r.err === "bad" ? "bad" : "net" };
+  if (r.dev && r.dev !== SITE.dev){ SITE.dev = r.dev; try { localStorage.setItem("bv2-dev", r.dev); } catch (x) {} }
+  try { localStorage.setItem("bv2-adm", "1"); } catch (x) {}
+  SITE.admin = true; if (SITE.adm instanceof Set) SITE.adm.add(PROF.id);
+  S7.menuRender && S7.menuRender(); sitePing(); setTimeout(siteTicks, 4000);
+  toast("Права адміністратора активовано — «Адмін панель» у профілі", "ok");
+  return { ok: true };
+}
 async function admLogin(b){
-  const e = admEl("admLk"), m = admEl("admLkM"), key = e ? e.value.trim().toLowerCase().replace(/[\s-]+/g, "") : "";
+  const e = admEl("admLk"), m = admEl("admLkM"), key = e ? e.value.trim() : "";
   const say = t => { if (m){ m.textContent = t; m.style.color = "#ff8a80"; } };
   if (!key) return say("Введіть ключ власників");
   if (b) b.disabled = true;
-  const r = await siteCall("/api/activate", { key, own: 1, ua: navigator.userAgent }).catch(() => null);
+  const r = await admKeyTry(key);
   if (b) b.disabled = false;
-  if (!r || !r.ok || !r.admin) return say(r && r.err === "used" ? "Ключ власників уже використано двічі" : r && r.err === "bad" ? "Ключ недійсний — перевірте, чи правильно його введено" : ADM_ERR.net);
-  if (r.dev && r.dev !== SITE.dev){ SITE.dev = r.dev; try { localStorage.setItem("bv2-dev", r.dev); } catch (x) {} }
-  try { localStorage.setItem("bv2-adm", "1"); } catch (x) {}
-  SITE.admin = true; S7.modalClose && S7.modalClose(); S7.menuRender && S7.menuRender(); sitePing();
-  toast("Права адміністратора активовано — «Адмін панель» у профілі", "ok");
+  if (!r.ok) return say(r.err === "bad" ? "Ключ недійсний — перевірте, чи правильно його введено" : ADM_ERR.net);
+  S7.modalClose && S7.modalClose(); S7.menuRender && S7.menuRender();
 }
 if (ADM_LOGIN){
   try { const u = new URL(location.href); u.searchParams.delete("admin"); if (/^#admin/i.test(u.hash)) u.hash = ""; history.replaceState(null, "", u.pathname + u.search + u.hash); } catch (e) {}
@@ -16686,9 +16725,9 @@ document.addEventListener("click", e => {
   e.preventDefault(); admAct(b.dataset.adm, b.dataset.v, b);
 });
 if (SITE.on) siteRun();
-S7.site = { on: () => SITE.on, start: siteStart, adminLogin: admLoginOpen, isAdmin: () => SITE.on && SITE.admin, admin: admOpen, ping: sitePing, ticks: () => SITE.ticks, S: SITE, topup: siteTopup, tpN: () => SITE.tpN,
+S7.site = { on: () => SITE.on, start: siteStart, adminLogin: admLoginOpen, adminKey: admKeyTry, canTour: siteCanTour, tourOk: siteTourOk, isAdmin: () => SITE.on && SITE.admin, admin: admOpen, ping: sitePing, ticks: () => SITE.ticks, S: SITE, topup: siteTopup, tpN: () => SITE.tpN,
   lbLoad: siteLbLoad, lbData: by => SITE.lbd[by === "xp" ? "xp" : "rp"] || null, players: sitePlayers, player: id => SITE.pl[id] || null, onlineN: () => SITE.onN };
-window.BV_SITE = { start: siteStart, admLoginOpen, siteTopup, admTpLoad, SITE, sitePing, siteTicks, admOpen, admAct, ADM, tickH, siteLbLoad, sitePlayers, siteMail, siteOnline };
+window.BV_SITE = { start: siteStart, admLoginOpen, admKeyTry, siteCanTour, siteTourOk, siteTopup, admTpLoad, SITE, sitePing, siteTicks, admOpen, admAct, ADM, tickH, siteLbLoad, sitePlayers, siteMail, siteOnline };
 
 
 /* ================= MAP ================= */
