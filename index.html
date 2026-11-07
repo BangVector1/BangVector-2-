@@ -1257,6 +1257,20 @@
 /* етап 7.48: телефон і сповіщення Bgram — лише під час бою, ніколи в меню */
 body.s7-menu #bgPhone,body.s7-menu #bgNote{display:none!important}
 
+/* етап 7.49: адміністратори та ключ власників */
+.adm-sec.adm-ads{border-color:rgba(255,204,51,.28)}
+.adm-ad{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;background:rgba(0,0,0,.32);border:1px solid rgba(255,255,255,.07);margin-top:7px}
+.adm-ad.me{border-color:rgba(255,204,51,.35)}
+.adm-adi{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.adm-adi b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-adi small{font-size:11.5px;opacity:.72;line-height:1.35}
+.adm-me{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#ffcc33;white-space:nowrap}
+.adm-del{flex:none;background:rgba(229,57,53,.16)!important;border-color:rgba(229,57,53,.5)!important;color:#ff8a80!important}
+.adm-del.cf,.s7b.cf{background:#c62828!important;color:#fff!important;border-color:#e53935!important}
+.adm-kt{margin-top:12px}
+.adm-key{display:flex;align-items:center;gap:8px;margin:6px 0 8px;padding:8px 10px;border-radius:9px;background:rgba(0,0,0,.4);border:1px dashed rgba(255,204,51,.4)}
+.adm-key code{flex:1;min-width:0;font:600 14px/1.3 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;color:#ffe08a;word-break:break-all}
+
 </style>
 </head>
 <body>
@@ -12697,7 +12711,22 @@ const I18N_DICT = {"Турніри на вибування: учасники г�
   "Турніри створює адміністрація BangVector 2 — реєструйтеся в оголошених змаганнях.":["Турниры создаёт администрация BangVector 2 — регистрируйтесь в объявленных соревнованиях.","Tournaments are created by the BangVector 2 admins — sign up for announced competitions."],
   "Турнірів поки немає — адміністрація оголосить нові змагання.":["Турниров пока нет — администрация объявит новые соревнования.","No tournaments yet — the admins will announce new competitions."],
   "Турніри створює лише адміністрація гри":["Турниры создаёт только администрация игры","Only the game admins can create tournaments"],
-  "входів · без обмежень":["входов · без ограничений","sign-ins · unlimited"]};            // { "укр. фраза": ["рос.", "англ."] }
+  "входів · без обмежень":["входов · без ограничений","sign-ins · unlimited"],
+  "Права адміністратора на цьому пристрої вимкнено":["Права администратора на этом устройстве отключены","Admin rights on this device have been turned off"],
+  "Адміністратори":["Администраторы","Admins"],
+  "Новий ключ: 12–40 латинських літер і цифр":["Новый ключ: 12–40 латинских букв и цифр","New key: 12–40 Latin letters and digits"],
+  "Згенерувати":["Сгенерировать","Generate"],
+  "Змінити ключ":["Изменить ключ","Change key"],
+  "Ключ вводять у полі ID друга в профілі — пристрій отримує адмін-панель. Новий ключ одразу замінює старий; ті, хто вже має адмін-панель, зберігають її, доки ви їх не видалите.":["Ключ вводят в поле ID друга в профиле — устройство получает админ-панель. Новый ключ сразу заменяет старый; те, у кого уже есть админ-панель, сохраняют её, пока вы их не удалите.","The key is entered in the friend ID field in the profile — the device gets the admin panel. A new key replaces the old one at once; those who already have the admin panel keep it until you remove them."],
+  "Без профілю":["Без профиля","No profile"],
+  "Пристрій":["Устройство","Device"],
+  "Цей пристрій":["Это устройство","This device"],
+  "Адміністраторів немає.":["Администраторов нет.","No admins."],
+  "Точно видалити?":["Точно удалить?","Remove for sure?"],
+  "Адміністратора видалено — адмін-панель на тому пристрої зникне протягом 2 хв":["Администратор удалён — админ-панель на том устройстве исчезнет в течение 2 мин","Admin removed — the admin panel on that device will disappear within 2 min"],
+  "Ключ — від 12 до 40 латинських літер і цифр, без пробілів":["Ключ — от 12 до 40 латинских букв и цифр, без пробелов","The key must be 12–40 Latin letters and digits, no spaces"],
+  "Підтвердити зміну ключа":["Подтвердить смену ключа","Confirm key change"],
+  "Ключ власників змінено — старий більше не діє":["Ключ владельцев изменён — старый больше не действует","Owners' key changed — the old one no longer works"]};            // { "укр. фраза": ["рос.", "англ."] }
 const LANGS = [["uk", "УКР", "Українська", "Українська"], ["ru", "РУС", "Російська", "Русский"], ["en", "ENG", "Англійська", "English"]];
 const I18N = { lang: "uk", li: -1, cache: new Map(), re: null, let: null, keys: null, orig: new WeakMap(), attr: new WeakMap(), obs: null, busy: false };
 const CYR_RE = /[А-ЯҐЄІЇа-яґєії]/;
@@ -15228,7 +15257,7 @@ function initStage7(map, maplibregl){
       case "copy": { const t = v; try { navigator.clipboard.writeText(t).then(() => toast("Скопійовано: " + t), () => toast(t)); } catch (e) { toast(t); } return; }
       case "fradd": {
         const raw = ($("frId").value || "").replace(/[\s-]+/g, "");
-        if (raw.length >= 20){      // етап 7.47: ключ власників у полі ID → адмін-панель на цьому пристрої
+        if (raw.length >= 12){      // етап 7.47: ключ власників у полі ID → адмін-панель на цьому пристрої (7.49: ключ 12–40 символів)
           if (!(S7.site && S7.site.adminKey)) return toast("ID гравця — 8 латинських літер і цифр");
           S7.site.adminKey(raw).then(r => { if (r.ok){ const e = $("frId"); if (e) e.value = ""; } else toast(r.err === "net" ? "Немає зв'язку із сервером гри — спробуйте пізніше" : "ID гравця — 8 латинських літер і цифр"); menuRender(); });
           return;
@@ -16438,6 +16467,11 @@ async function sitePing(){
     if (r && r.ok){
       if (b.p) SITE.sig = sig;
       let ch = SITE.tick !== (r.t || null) || SITE.admin !== !!r.admin;
+      if (SITE.admin && !r.admin){      // етап 7.49: права адміністратора забрали з адмін-панелі
+        try { localStorage.setItem("bv2-adm", "0"); } catch (e) {}
+        if (S7.mdl === "adm" && S7.modalClose) S7.modalClose();
+        siteNote("Права адміністратора на цьому пристрої вимкнено", "warn");
+      }
       SITE.tick = r.t || null; SITE.admin = !!r.admin;
       for (const g of r.g || []) if (siteGrant(g)) ch = true;
       if (r.on != null) SITE.onN = r.on | 0;
@@ -16580,6 +16614,11 @@ function admOpen(){
   S7.modal(`<h3 class="adm-h">${tickSvg("#ffcc33", 20)} Адмін панель</h3><div class="sub">Заявки на поповнення, нагороди й галочки командирів. Видно лише на пристроях власників.</div>` +
     `<div class="adm-sec adm-tp"><div class="adm-t"><span>Заявки на поповнення</span><span class="adm-n" id="admTpN"></span></div><div id="admTp"><div class="mm-note">Завантаження…</div></div></div>` +
     `<div class="adm-sec"><div class="adm-t"><span>Статистика</span><button class="s7b sm ghost" data-adm="st">Оновити</button></div><div id="admSt" class="adm-st"><div class="mm-note">Завантаження…</div></div></div>` +
+    `<div class="adm-sec adm-ads"><div class="adm-t"><span>Адміністратори</span><span class="adm-n" id="admAdN"></span></div><div id="admAd"><div class="mm-note">Завантаження…</div></div>` +
+    `<div class="adm-t adm-kt"><span>Ключ власників</span></div><div class="adm-key"><code id="admKeyCur" class="notr">…</code><button class="s7b sm ghost" data-adm="kcp">Копіювати</button></div>` +
+    `<div class="s7row">${admIn("admKeyNew", "Новий ключ: 12–40 латинських літер і цифр", 40, 'autocapitalize="off" autocorrect="off"')}<button class="s7b ghost" data-adm="kgen">Згенерувати</button></div>` +
+    `<button class="s7b" data-adm="kset">Змінити ключ</button>` +
+    `<div class="mm-note">Ключ вводять у полі ID друга в профілі — пристрій отримує адмін-панель. Новий ключ одразу замінює старий; ті, хто вже має адмін-панель, зберігають її, доки ви їх не видалите.</div></div>` +
     `<div class="adm-sec"><div class="adm-t"><span>Видати Bcoin</span></div><div class="s7row">${admIn("admBcId", "ID гравця", 8, 'style="text-transform:uppercase"')}${admIn("admBcN", "Кількість", 7, 'inputmode="numeric"')}</div>` +
     `<div class="chips7 adm-pre">${[100, 500, 1000, 5000].map(n => `<button class="c7" data-adm="bcn" data-v="${n}">${fmtN(n)}</button>`).join("")}</div>` +
     `<button class="s7b" data-adm="bc">Видати Bcoin</button><div class="mm-note">Гравець отримає Bcoin, щойно зайде в гру (або протягом 2 хв, якщо він зараз у грі).</div></div>` +
@@ -16615,7 +16654,36 @@ function admTpRender(){
   e.innerHTML = (T.wait.length ? T.wait.map(card).join("") : `<div class="mm-note">Нових заявок немає. Коли гравець оплатить і підтвердить поповнення, заявка з'явиться тут.</div>`) +
     (T.hist.length ? `<details class="adm-tphist"><summary>Опрацьовані заявки · ${T.hist.length}</summary>${T.hist.map(card).join("")}</details>` : "");
 }
-function admLoad(){ admTpLoad(); admStLoad(false); }
+function admLoad(){ admTpLoad(); admStLoad(false); admAdLoad(); }
+/* етап 7.49: хто має адмін-панель + ключ власників */
+const uaTxt = ua => {
+  ua = String(ua || "");
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Macintosh|Mac OS X/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
+  const br = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
+  return [os, br].filter(Boolean).join(" · ");
+};
+async function admAdLoad(){
+  const r = await siteCall("/api/admin/admins", {}).catch(() => null);
+  if (S7.mdl !== "adm") return;
+  if (r && r.ok){ ADM.ad = r; admAdRender(); }
+  else { const e = admEl("admAd"); if (e) e.innerHTML = `<div class="mm-note" style="color:#ff8a80">${escH(admErr(r))}</div>`; }
+}
+function admAdRender(){
+  const e = admEl("admAd"), n = admEl("admAdN"), k = admEl("admKeyCur"), A = ADM.ad; if (!e || !A) return;
+  if (n) n.textContent = A.list.length;
+  if (k) k.textContent = A.key || "—";
+  e.innerHTML = A.list.length ? A.list.map(a => `<div class="adm-ad${a.me ? " me" : ""}"><div class="adm-adi"><b class="notr">${escH(a.name || "Без профілю")}</b>${a.uid ? tickH(a.uid, 13) : ""}` +
+      `<small>${a.uid ? `ID <span class="notr">${escH(a.uid)}</span> · ` : ""}${escH(uaTxt(a.ua) || "Пристрій")}</small>` +
+      `<small>${a.on ? '<i class="odot on"></i>у грі зараз' : "востаннє " + agoTxt(a.last)} · з ${dtTxt(a.created)}</small></div>` +
+      (a.me ? `<span class="adm-me">Цей пристрій</span>` : `<button class="s7b sm adm-del" data-adm="unadm" data-v="${a.rid}">Видалити</button>`) + `</div>`).join("")
+    : `<div class="mm-note">Адміністраторів немає.</div>`;
+}
+const admCopy = t => {
+  const ok = () => toast("Скопійовано", "ok");
+  try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(ok, () => fb()); } catch (e) {}
+  fb();
+  function fb(){ const a = document.createElement("textarea"); a.value = t; a.style.cssText = "position:fixed;opacity:0;top:0"; document.body.appendChild(a); a.select(); try { document.execCommand("copy"); ok(); } catch (e) {} a.remove(); }
+};
 function admStRender(){
   const e = admEl("admSt"), s = ADM.st; if (!e || !s) return;
   const tile = (n, v, sub) => `<div class="adm-tile"><b>${v}</b><span>${n}</span>${sub ? `<small>${sub}</small>` : ""}</div>`;
@@ -16716,6 +16784,26 @@ async function admAct(op, v, b){
         b.disabled = true; const r = await siteCall("/api/admin/user", { uid }); b.disabled = false;
         if (!r || !r.ok) return toast(admErr(r));
         ADM.user = r; admUserRender(); return;
+      }
+      case "unadm": {
+        if (b.dataset.cf !== "1"){ b.dataset.cf = "1"; b.textContent = "Точно видалити?"; b.classList.add("cf"); setTimeout(() => { if (b.isConnected){ b.dataset.cf = ""; b.textContent = "Видалити"; b.classList.remove("cf"); } }, 3500); return; }
+        b.disabled = true; const r = await siteCall("/api/admin/unadmin", { rid: +v }); b.disabled = false;
+        toast(r && r.ok ? "Адміністратора видалено — адмін-панель на тому пристрої зникне протягом 2 хв" : admErr(r), r && r.ok ? "ok" : "warn");
+        return admAdLoad();
+      }
+      case "kcp": { const k = ADM.ad && ADM.ad.key; if (k) admCopy(k); return; }
+      case "kgen": {
+        const A = "abcdefghijklmnopqrstuvwxyz0123456789", r = new Uint8Array(25); crypto.getRandomValues(r);
+        const e = admEl("admKeyNew"); if (e) e.value = Array.from(r, x => A[x % 36]).join(""); return;
+      }
+      case "kset": {
+        const e = admEl("admKeyNew"), k = e ? e.value.trim().toLowerCase().replace(/[\s-]+/g, "") : "";
+        if (!/^[a-z0-9]{12,40}$/.test(k)) return toast("Ключ — від 12 до 40 латинських літер і цифр, без пробілів", "warn");
+        if (b.dataset.cf !== "1"){ b.dataset.cf = "1"; b.textContent = "Підтвердити зміну ключа"; b.classList.add("cf"); setTimeout(() => { if (b.isConnected){ b.dataset.cf = ""; b.textContent = "Змінити ключ"; b.classList.remove("cf"); } }, 4000); return; }
+        b.disabled = true; const r = await siteCall("/api/admin/ownerkey", { key: k }); b.disabled = false; b.dataset.cf = ""; b.textContent = "Змінити ключ"; b.classList.remove("cf");
+        if (r && r.ok){ if (e) e.value = ""; toast("Ключ власників змінено — старий більше не діє", "ok"); }
+        else toast(r && r.err === "bad" ? "Ключ — від 12 до 40 латинських літер і цифр, без пробілів" : admErr(r), "warn");
+        return admAdLoad();
       }
       case "pick": ["admBcId", "admTkId", "admUsId"].forEach(id => { const e = admEl(id); if (e) e.value = v; }); toast(`ID ${v} підставлено`); return;
       case "tpok": case "tpno": {
