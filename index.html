@@ -13124,6 +13124,7 @@ function lobbyHb(){
   const L = NET.lob;
   const m = { t: "hb", pl: profPub(), room: roomPub(NET.room), tours: NET.tours.filter(t => t.status !== "done" || Date.now() - (t.doneAt || 0) < 36e5) };
   if (L.host) lobbyHostMsg(null, m); else nsend(L.conn, m);
+  S7.site && S7.site.lobby && S7.site.lobby();      // етап 7.53: і на сервер сайту
 }
 setInterval(lobbyHb, 8000);
 function lobbyHostMsg(c, m){
@@ -13151,10 +13152,25 @@ function lobbyBroadcast(){
   }, 300);
 }
 setInterval(() => { if (NET.lob.host) lobbyBroadcast(); }, 5000);
+/* етап 7.53: стан лобі = P2P-лобі (якщо з'єднане) ∪ лобі сервера сайту — кімнати видно, навіть коли «господар лобі» заснув */
+function lobbyMerge(){
+  const E = { rooms: [], tours: [], online: [], pl: [] }, a = NET.lob.p2p || E, b = NET.lob.srv || E;
+  const uniq = (arr, k) => { const m = new Map(); for (const x of arr) if (x && x[k] != null && !m.has(x[k])) m.set(x[k], x); return [...m.values()]; };
+  NET.lob.state = { rooms: uniq(a.rooms.concat(b.rooms), "code").slice(0, 60), tours: uniq(a.tours.concat(b.tours), "tid").slice(0, 40),
+    online: [...new Set(a.online.concat(b.online))], pl: uniq(a.pl.concat(b.pl), "id") };
+}
+function lobbySrv(r){
+  if (!r || !r.ok) return;
+  NET.lob.srv = { rooms: (r.rooms || []).filter(x => x && x.owner && /^[A-Z0-9]{6}$/.test(x.code || "")).map(x => Object.assign({}, x, { owner: cleanProf(x.owner) })),
+    tours: (r.tours || []).filter(t => t && t.tid && t.org).map(t => Object.assign({}, t, { org: cleanProf(t.org) })), online: (r.online || []).filter(x => typeof x === "string"), pl: (r.pl || []).map(cleanProf) };
+  lobbyState({ t: "state", srv: 1 });
+}
 function lobbyState(m){
   if (!m || m.t !== "state") return;
-  NET.lob.state = { rooms: (m.rooms || []).slice(0, 60), tours: (m.tours || []).slice(0, 40), online: m.online || [], pl: (m.pl || []).map(cleanProf) };
-  lbMerge(m.lb); lbMerge(NET.lob.state.pl);
+  if (!m.srv) NET.lob.p2p = { rooms: (m.rooms || []).slice(0, 60), tours: (m.tours || []).slice(0, 40), online: m.online || [], pl: (m.pl || []).map(cleanProf) };
+  lobbyMerge();
+  if (!m.srv) lbMerge(m.lb);
+  lbMerge(NET.lob.state.pl);
   let ch = false;
   for (const f of PROF.friends){ const q = NET.lob.state.pl.find(p => p.id === f.id); if (q && (q.name !== f.name || q.xp !== f.xp)){ f.name = q.name; f.xp = q.xp; ch = true; } }
   if (ch) saveProf();
@@ -14276,6 +14292,7 @@ function initStage7(map, maplibregl){
     }, 1800);
   }
   S7.ui = {
+    scr: () => (inMenu() ? UI.scr : null),
     net(){ if (inMenu()) menuRender(); },
     refresh(kind){
       if (inMenu()){ if (kind === "friends" || kind === "lobby" || kind === "room") menuRender(); }
@@ -15254,7 +15271,7 @@ function initStage7(map, maplibregl){
   /* ======================= ДІЇ ======================= */
   function act(a, v, b){
     switch (a){
-      case "go": UI.tour = null; UI.scr = v === "scen" ? "scen" : v; menuRender(); if (v === "online" && NET.open) lobbyHb(); return;
+      case "go": UI.tour = null; UI.scr = v === "scen" ? "scen" : v; menuRender(); if (v === "online" && NET.open) lobbyHb(); if (/^(online|tours|friends)$/.test(v) && S7.site && S7.site.lobby) S7.site.lobby(true); return;
       case "resume": return resumeGame();
       case "bcshop": return S7.shop && S7.shop.open("shop");      // етап 7.38: торговельний майданчик, арсенал, поповнення Bcoin
       case "bcars": return S7.shop && S7.shop.open("ars");
@@ -16587,6 +16604,28 @@ async function siteMail(to, msg){
   try { const r = await siteCall("/api/mail", { uid: PROF.id, to, msg }); return !!(r && r.ok); } catch (e) { return false; }
 }
 
+/* етап 7.53: лобі «Мережевого фронту» через сервер — кімнати, турніри й хто в мережі.
+   Часто (кожні ~5 с) — лише коли гравець на екранах мережі або тримає кімнату/турнір; інакше — раз на 30 с. */
+const SLB = { last: "", lastW: 0, busy: false, at: 0 };
+function lobbyHot(){
+  const s = S7.ui && S7.ui.scr ? S7.ui.scr() : null;
+  return s === "online" || s === "tours" || s === "friends" || !!NET.room || NET.tours.some(t => t.org && t.org.id === PROF.id && t.status !== "done");
+}
+async function siteLobby(force){
+  if (SLB.busy){ SLB.again = true; return; }
+  if (!SITE.on || document.hidden && !NET.room) return;
+  const nowT = Date.now();
+  const pay = { p: profPub(), room: roomPub(NET.room), tours: NET.tours.filter(t => t.org && t.org.id === PROF.id && (t.status !== "done" || nowT - (t.doneAt || 0) < 36e5)).slice(0, 5) };
+  const sig = JSON.stringify([pay.p.name, pay.p.xp, pay.p.rp, pay.room, pay.tours]);
+  if (!force && sig === SLB.last && nowT - SLB.at < (lobbyHot() ? 4000 : 30000)) return;      // без змін — за розкладом; зміни (кімната, турнір) — одразу
+  SLB.at = nowT;
+  const w = sig !== SLB.last || nowT - SLB.lastW > 50000;
+  SLB.busy = true;
+  try {
+    const r = await siteCall("/api/lobby", Object.assign({ w: w ? 1 : 0 }, pay));
+    if (r && r.ok){ if (w){ SLB.last = sig; SLB.lastW = nowT; } lobbySrv(r); }
+  } catch (e) {} finally { SLB.busy = false; if (SLB.again){ SLB.again = false; setTimeout(() => siteLobby(false), 50); } }
+}
 /* запуск зв'язку із сервером: одразу (пристрій уже зареєстровано) або щойно завантажувач отримає відповідь сервера */
 function siteRun(){
   if (SITE.run) return; SITE.run = true;
@@ -16594,6 +16633,7 @@ function siteRun(){
   setInterval(() => { if (!document.hidden) sitePing(); }, 120000);
   setInterval(() => { if (!document.hidden) siteTicks(); }, 300000);
   setInterval(() => { if (S7.mdl === "adm" && !document.hidden){ admTpLoad(); admStLoad(true); } }, 15000);
+  setInterval(() => siteLobby(false), 2500); setTimeout(() => siteLobby(true), 1500);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - SITE.tT > 60000){ SITE.tT = Date.now(); sitePing(); } });
 }
 function siteStart(g){
@@ -16829,9 +16869,9 @@ document.addEventListener("click", e => {
   e.preventDefault(); admAct(b.dataset.adm, b.dataset.v, b);
 });
 if (SITE.on) siteRun();
-S7.site = { on: () => SITE.on, start: siteStart, adminLogin: admLoginOpen, adminKey: admKeyTry, canTour: siteCanTour, tourOk: siteTourOk, isAdmin: () => SITE.on && SITE.admin, admin: admOpen, ping: sitePing, ticks: () => SITE.ticks, S: SITE, topup: siteTopup, tpN: () => SITE.tpN,
+S7.site = { on: () => SITE.on, start: siteStart, lobby: f => siteLobby(!!f), adminLogin: admLoginOpen, adminKey: admKeyTry, canTour: siteCanTour, tourOk: siteTourOk, isAdmin: () => SITE.on && SITE.admin, admin: admOpen, ping: sitePing, ticks: () => SITE.ticks, S: SITE, topup: siteTopup, tpN: () => SITE.tpN,
   lbLoad: siteLbLoad, lbData: by => SITE.lbd[by === "xp" ? "xp" : "rp"] || null, players: sitePlayers, player: id => SITE.pl[id] || null, onlineN: () => SITE.onN };
-window.BV_SITE = { start: siteStart, admLoginOpen, admKeyTry, siteCanTour, siteTourOk, siteTopup, admTpLoad, SITE, sitePing, siteTicks, admOpen, admAct, ADM, tickH, siteLbLoad, sitePlayers, siteMail, siteOnline };
+window.BV_SITE = { start: siteStart, siteLobby, admLoginOpen, admKeyTry, siteCanTour, siteTourOk, siteTopup, admTpLoad, SITE, sitePing, siteTicks, admOpen, admAct, ADM, tickH, siteLbLoad, sitePlayers, siteMail, siteOnline };
 
 
 /* ================= MAP ================= */
