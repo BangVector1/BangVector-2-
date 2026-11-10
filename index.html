@@ -1275,6 +1275,16 @@ body.s7-menu #bgPhone,body.s7-menu #bgNote{display:none!important}
 .lbt td.x{font-weight:700;font-size:13px;line-height:1.15}.lbt td.x small{display:block;font-size:9.5px;font-weight:500;color:#8a9097;letter-spacing:.04em;text-transform:uppercase}
 .lbt td.x.rp{color:#ff8f7a}
 
+/* етап 7.54: якість графіки — налаштування і полегшений режим */
+.set-sec{margin-top:6px}.set-h{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ff6b5e;margin:2px 0 10px}
+.set-opts{display:flex;flex-direction:column;gap:8px}
+.set-opt{display:flex;align-items:flex-start;gap:12px;text-align:left;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(12,13,16,.78);color:#e8eaed;cursor:pointer;font:inherit}
+.set-opt b{display:block;font-size:15px;margin-bottom:3px}.set-opt small{display:block;font-size:12px;line-height:1.4;color:#9aa1a9}
+.set-opt .set-r{flex:none;width:18px;height:18px;margin-top:2px;border-radius:50%;border:2px solid #6b7178;box-sizing:border-box}
+.set-opt.on{border-color:rgba(255,59,48,.75);background:rgba(60,12,10,.55)}.set-opt.on .set-r{border-color:#ff3b30;background:radial-gradient(circle,#ff3b30 0 45%,transparent 50%)}
+body.gfx-low *,body.gfx-mid *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.gfx-low *,body.gfx-low *::before,body.gfx-low *::after{text-shadow:none!important;transition-duration:0s!important}
+
 </style>
 </head>
 <body>
@@ -3332,7 +3342,7 @@ function initStage3(map, maplibregl){
     }
     const active = units.size > 0;
     if (active || shownUnits){
-      if (mapReady && now - lastRender > 33 && map.getSource("units")){ lastRender = now; renderUnits(); }
+      if (mapReady && now - lastRender > GFX.unitsMs() && map.getSource("units")){ lastRender = now; renderUnits(); }      // етап 7.54: частота — за якістю графіки
     }
     if (impacts.length || impactsShown){ renderImpacts(now); }
     HOOKS.render && HOOKS.render(now);
@@ -4739,7 +4749,33 @@ const WIND = [-0.3, 0];     // вітер: дим зноситься чітко 
 const NEAR_Z = 6.85;            // ближче ~30 км у шкалі — «як справжнє», далі — синій неон
 const SMOKE_FADE = [20, 45];    // км на лінійці масштабу: ≤20 (шкала «10 км») — дим повністю, ≥45 (шкала «30 км») — зник
 
-const FX = { parts: [], emit: [], trails: [], canvas: null, g: null, W: 0, H: 0, dpr: 1, map: null, empty: true };
+/* етап 7.54: якість графіки — Низька / Середня / Висока (висока = як було). На телефоні за замовчуванням — середня.
+   Впливає на щільність пікселів мапи й ефектів, частоту оновлення моделей, кількість частинок, сліди, світіння, розмиття панелей. */
+const GFX = (() => {
+  let v = null; try { v = localStorage.getItem("bv2-gfx"); } catch (e) {}
+  let phone = false; try { phone = matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) < 900; } catch (e) {}
+  const G = { lvl: v === "0" || v === "1" || v === "2" ? +v : (phone ? 1 : 2), auto: !(v === "0" || v === "1" || v === "2"), phone };
+  const dpr = () => window.devicePixelRatio || 1;
+  G.dprMap = () => G.lvl === 0 ? 1 : G.lvl === 1 ? Math.min(dpr(), 1.5) : dpr();
+  G.dprFx = () => G.lvl === 0 ? 1 : G.lvl === 1 ? Math.min(dpr(), 1.5) : Math.min(2, dpr());
+  G.unitsMs = () => [90, 55, 33][G.lvl];
+  G.adK = () => [2.5, 1.6, 1][G.lvl];
+  G.skip = () => [0.6, 0.3, 0][G.lvl];
+  G.cap = () => [500, 1300, 2600][G.lvl];
+  G.fxMs = () => [40, 22, 0][G.lvl];
+  G.trailK = () => [0.45, 0.7, 1][G.lvl];
+  G.glow = () => [0, 0.6, 1][G.lvl];
+  G.name = n => ["Низька", "Середня", "Висока"][n == null ? G.lvl : n];
+  G.apply = () => {
+    document.body.classList.toggle("gfx-low", G.lvl === 0); document.body.classList.toggle("gfx-mid", G.lvl === 1);
+    try { if (window.bvMap && window.bvMap.setPixelRatio) window.bvMap.setPixelRatio(G.dprMap()); } catch (e) {}
+    try { FX.resize && FX.resize(); } catch (e) {}
+  };
+  G.set = n => { G.lvl = Math.max(0, Math.min(2, n | 0)); G.auto = false; try { localStorage.setItem("bv2-gfx", String(G.lvl)); } catch (e) {} G.apply(); };
+  return G;
+})();
+window.BV_GFX = GFX;
+const FX = { parts: [], emit: [], trails: [], canvas: null, g: null, W: 0, H: 0, dpr: 1, map: null, empty: true, last: 0 };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const rint = ([a, b]) => Math.round(rnd(a, b));
 const pickA = a => a[(Math.random() * a.length) | 0];
@@ -4798,8 +4834,9 @@ function P(o){
     q.sd = rnd(-0.07, 0.07); q.tb = rnd(0.06, 0.18); q.sf = rnd(0.5, 1.5); q.sp = rnd(0, 6.283); q.st = rnd(0.8, 1.8);
     q.rot = rnd(-0.4, 0.4); q.vr = rnd(-0.08, 0.08);
   }
+  if (q.k !== "flash" && GFX.lvl < 2 && Math.random() < GFX.skip()) return;      // етап 7.54: менше частинок на низькій / середній графіці
   FX.parts.push(q);
-  if (FX.parts.length > 2600) FX.parts.splice(0, FX.parts.length - 2600);
+  const cap = GFX.cap(); if (FX.parts.length > cap) FX.parts.splice(0, FX.parts.length - cap);
 }
 function E(o){ FX.emit.push(Object.assign({ next: performance.now() }, o)); }
 const jitter = (p, km) => offKm(p, rnd(-km, km), rnd(-km, km));
@@ -4947,7 +4984,7 @@ function drawMissile(g, x, y, hdg, S, sc, now, seed){
 function drawNeonDart(g, x, y, hdg, len, red){
   g.save(); g.translate(x, y); g.rotate(hdg * D2R);
   g.globalCompositeOperation = "lighter"; g.lineCap = "round";
-  g.shadowColor = red ? "#ff3b30" : "#3d8bff"; g.shadowBlur = 9 * FX.dpr;
+  g.shadowColor = red ? "#ff3b30" : "#3d8bff"; g.shadowBlur = 9 * FX.dpr * GFX.glow();
   g.strokeStyle = red ? "rgba(255,96,84,0.95)" : "rgba(86,160,255,0.95)"; g.lineWidth = 2.6;
   g.beginPath(); g.moveTo(0, -len / 2); g.lineTo(0, len / 2); g.stroke();
   g.shadowBlur = 0; g.strokeStyle = red ? "#fff0ee" : "#eef6ff"; g.lineWidth = 1.1;
@@ -4970,15 +5007,17 @@ function drawDrone(g, v, x, y, s, msc, sel){
   if (v.near && im && im.naturalWidth){
     const m = 24 * msc / Math.max(im.naturalWidth, im.naturalHeight), w = im.naturalWidth * m, h = im.naturalHeight * m;      // етап 7.30: усі дрони-перехоплювачі в польоті — однакового розміру
     g.save(); g.translate(x, y); g.rotate(s.hdg * D2R);
-    g.shadowColor = "rgba(0,0,0,0.55)"; g.shadowBlur = 4; g.shadowOffsetX = 3; g.shadowOffsetY = 3;
+    g.shadowColor = "rgba(0,0,0,0.55)"; g.shadowBlur = 4 * GFX.glow(); g.shadowOffsetX = 3; g.shadowOffsetY = 3;
     g.drawImage(im, -w / 2, -h / 2, w, h); g.restore();
   } else {
     drawNeonDart(g, x, y, s.hdg, 6 * v.fs + 2, ru);
     g.fillStyle = ru ? "rgba(255,200,190,0.95)" : "rgba(200,230,255,0.95)"; g.beginPath(); g.arc(x, y, 1.6, 0, 7); g.fill();
   }
 }
-function fxDraw(now){
+function fxDraw(now, force){
   const g = FX.g; if (!g || !FX.map) return;
+  const fms = GFX.fxMs(); if (fms && !force && now - FX.last < fms) return;      // етап 7.54: на низькій / середній — рідше перемальовувати ефекти
+  FX.last = now;
   // emitters
   for (let i = FX.emit.length - 1; i >= 0; i--){
     const em = FX.emit[i];
@@ -4996,7 +5035,7 @@ function fxDraw(now){
   const vis = (x, y, m) => x > -m && y > -m && x < Wc + m && y < Hc + m;
 
   // 1. сліди ракет
-  const life = v.near ? 2600 : 1100;
+  const life = (v.near ? 2600 : 1100) * GFX.trailK();
   FX.trails = FX.trails.filter(t => t.pts.length && now - t.pts[t.pts.length - 1][2] < life);
   const drawTrail = (pts, head, red) => {
     const all = head ? pts.concat([[head[0], head[1], now]]) : pts;
@@ -5163,13 +5202,13 @@ function initFX(map){
   FX.canvas = c; FX.g = c.getContext("2d");
   const resize = () => {
     const el = map.getContainer();
-    FX.W = el.clientWidth; FX.H = el.clientHeight; FX.dpr = Math.min(2, window.devicePixelRatio || 1);
+    FX.W = el.clientWidth; FX.H = el.clientHeight; FX.dpr = GFX.dprFx();
     c.width = Math.round(FX.W * FX.dpr); c.height = Math.round(FX.H * FX.dpr); FX.empty = false;
   };
-  resize();
+  resize(); FX.resize = resize;
   window.addEventListener("resize", resize);
   map.on("resize", resize);
-  map.on("move", () => fxDraw(performance.now()));
+  map.on("move", () => fxDraw(performance.now(), true));
   buildTex();
 }
 
@@ -5600,7 +5639,7 @@ function initStage4(map, maplibregl){
   HOOKS.step = adStep;
   HOOKS.render = now => {
     if (!map.getSource("adUnits")) return;
-    if (ADS.dirty && now - lastU > (airUp ? 45 : 120)){ lastU = now; ADS.dirty = false; renderUnitsAD(); }
+    if (ADS.dirty && now - lastU > (airUp ? 45 : 120) * GFX.adK()){ lastU = now; ADS.dirty = false; renderUnitsAD(); }
     fxDraw(now);
     if ((AUTO_AL.on || AUTO_AL.onRu) && !(HOOKS.puppet && HOOKS.puppet()) && now - lastAuto > 500){ lastAuto = now; autoAlertTick(); }
     if (AP.open && now - lastPanel > 300){ lastPanel = now; apLive(); }
@@ -10701,7 +10740,7 @@ const I18N_DICT = {"Турніри на вибування: учасники г�
   "Режим «":["Режим «","Mode «"],
   "Росія ·":["Россия ·","Russia ·"],
   "Саратов":["Саратов","Saratov"],
-  "Середня":["Средняя","Medium"],
+  "Середня":["Среднее","Medium"],
   "Сержант":["Сержант","Sergeant"],
   "Скинути":["Сбросить","Reset"],
   "Сторони":["Стороны","Sides"],
@@ -10738,7 +10777,7 @@ const I18N_DICT = {"Турніри на вибування: учасники г�
   "Бук-М2":["Бук-М2","Buk-M2"],
   "Бук-М3":["Бук-М3","Buk-M3"],
   "Більше":["Больше","More"],
-  "Висока":["Высокая","High"],
+  "Висока":["Высокое","High"],
   "Вручну":["Вручную","Manual"],
   "Відбій":["Отбой","All-clear"],
   "Глядач":["Зритель","Spectator"],
@@ -10756,7 +10795,7 @@ const I18N_DICT = {"Турніри на вибування: учасники г�
   "Москва":["Москва","Moscow"],
   "МіГ-29":["МиГ-29","MiG-29"],
   "Нептун":["Нептун","Neptune"],
-  "Низька":["Низкая","Low"],
+  "Низька":["Низкое","Low"],
   "Носій:":["Носитель:","Carrier:"],
   "Панель":["Панель","Panel"],
   "Порт «":["Порт «","Port «"],
@@ -12732,7 +12771,30 @@ const I18N_DICT = {"Турніри на вибування: учасники г�
   "Ключ — від 12 до 40 латинських літер і цифр, без пробілів":["Ключ — от 12 до 40 латинских букв и цифр, без пробелов","The key must be 12–40 Latin letters and digits, no spaces"],
   "Підтвердити зміну ключа":["Подтвердить смену ключа","Confirm key change"],
   "Ключ власників змінено — старий більше не діє":["Ключ владельцев изменён — старый больше не действует","Owners' key changed — the old one no longer works"],
-  "Очки рангу (лише «Мережевий фронт»)":["Очки ранга (только «Сетевой фронт»)","Rank points (Network Front only)"]};            // { "укр. фраза": ["рос.", "англ."] }
+  "Очки рангу (лише «Мережевий фронт»)":["Очки ранга (только «Сетевой фронт»)","Rank points (Network Front only)"],
+  "Налаштування":["Настройки","Settings"],
+  "Якість графіки":["Качество графики","Graphics quality"],
+  "Максимальна плавність для слабких телефонів: менше частинок і слідів, без світіння й розмиття, мапа у звичайній чіткості.":["Максимальная плавность для слабых телефонов: меньше частиц и следов, без свечения и размытия, карта в обычной чёткости.","Maximum smoothness for weaker phones: fewer particles and trails, no glow or blur, standard map sharpness."],
+  "Баланс якості й швидкості — рекомендовано для телефонів і онлайн-боїв.":["Баланс качества и скорости — рекомендовано для телефонов и онлайн-боёв.","A balance of quality and speed — recommended for phones and online battles."],
+  "Повна якість, як була в грі: усі ефекти, сліди ракет, світіння, найвища чіткість.":["Полное качество, как было в игре: все эффекты, следы ракет, свечение, наивысшая чёткость.","Full quality, as before: all effects, missile trails, glow, maximum sharpness."],
+  "Діє одразу, і в бою теж. Зберігається на цьому пристрої.":["Действует сразу, и в бою тоже. Сохраняется на этом устройстве.","Applies instantly, in battle too. Saved on this device."],
+  "Для телефона автоматично обрано «Середню».":["Для телефона автоматически выбрано «Среднее».","\"Medium\" was selected automatically for this phone."],
+  "Графіка:":["Графика:","Graphics:"],
+  "Як заробити Bcoin":["Как заработать Bcoin","How to earn Bcoin"],
+  "лише в грі":["только в игре","in-game only"],
+  "Перемога в бою":["Победа в бою","Battle victory"],
+  "Поразка чи нічия":["Поражение или ничья","Defeat or draw"],
+  "+15 (більше на вищих рівнях)":["+15 (больше на высоких уровнях)","+15 (more at higher levels)"],
+  "+75 і більше · з офіцерських — шанс контейнера":["+75 и больше · с офицерских — шанс контейнера","+75 and more · officer ranks — container chance"],
+  "Дублікат із контейнера":["Дубликат из контейнера","Duplicate from a container"],
+  "Контейнер після бою":["Контейнер после боя","Container after battle"],
+  "Контейнери завжди дешевші за техніку, яка з них випадає. Грайте бої — і Bcoin накопичуються.":["Контейнеры всегда дешевле техники, которая из них выпадает. Играйте бои — и Bcoin накапливаются.","Containers are always cheaper than the equipment inside them. Play battles and your Bcoin will add up."],
+  "Як заробити":["Как заработать","How to earn"],
+  "Після кожного бою · Bcoin:":["После каждого боя · Bcoin:","After every battle · Bcoin:"],
+  "за перемогу,":["за победу,","per win,"],
+  "за поразку чи нічию · шанс дешевого контейнера:":["за поражение или ничью · шанс дешёвого контейнера:","per loss or draw · cheap container chance:"],
+  "Нагороди, галочки командирів, адміністратори й статистика. Видно лише на пристроях власників.":["Награды, галочки командиров, администраторы и статистика. Видно только на устройствах владельцев.","Rewards, commander ticks, admins and statistics. Visible only on owners' devices."],
+  "ціни техніки":["цены техники","equipment price"]};            // { "укр. фраза": ["рос.", "англ."] }
 const LANGS = [["uk", "УКР", "Українська", "Українська"], ["ru", "РУС", "Російська", "Русский"], ["en", "ENG", "Англійська", "English"]];
 const I18N = { lang: "uk", li: -1, cache: new Map(), re: null, let: null, keys: null, orig: new WeakMap(), attr: new WeakMap(), obs: null, busy: false };
 const CYR_RE = /[А-ЯҐЄІЇа-яґєії]/;
@@ -13624,6 +13686,7 @@ function tourPlay(t){
    ЕТАП 7 — ІНТЕРФЕЙС: головне меню, екрани, ігровий HUD, результати, відео
    ====================================================================== */
 const ICO = {
+  gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" stroke-linecap="round"/><circle cx="12" cy="12" r="6.6"/></svg>`,
   prof: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2.5 20 5.5v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10v-6z"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c1-2.2 2.6-3.2 4.5-3.2s3.5 1 4.5 3.2"/></svg>',
   scen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.5v5M12 17.5v5M1.5 12h5M17.5 12h5" stroke-linecap="round"/></svg>',
   net: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="5" cy="6" r="2.4"/><circle cx="19" cy="6" r="2.4"/><circle cx="12" cy="18.5" r="2.4"/><path d="M7.2 7.2 10.6 16.4M16.8 7.2l-3.4 9.2M7.4 6h9.2"/></svg>',
@@ -13944,7 +14007,7 @@ function initStage7(map, maplibregl){
   const SCR = {
     main(){
       const lv = levelOf(PROF.xp), rk = rankOf(PROF.rp), nIn = PROF.reqIn.length;
-      const side = (S7.shop ? `<button class="bc-mbal" data-s7="bctop" title="Поповнити баланс Bcoin">${S7.shop.coin(36)}<span class="g"><em>Баланс · BangCoin</em><b>${fmtN(PROF.bc)}<small>BCOIN</small></b></span><i>+</i></button>` : "") +
+      const side = (S7.shop ? `<button class="bc-mbal" data-s7="bctop" title="Як заробити Bcoin">${S7.shop.coin(36)}<span class="g"><em>Баланс · BangCoin</em><b>${fmtN(PROF.bc)}<small>BCOIN</small></b></span><i>?</i></button>` : "") +
         `<button class="mm-me" data-s7="go" data-v="profile" title="Оперативний статус: профіль, звання, друзі"><span class="rk">${rkSvgOf(PROF.rp, 50)}</span>` +
         `<span class="gr"><em>Оперативний статус${nIn ? ` · нових заявок: ${nIn}` : ""}</em><b>${escU(PROF.name)}${tickH(PROF.id)}</b><small>${rk.n} · ${fmtN(PROF.xp)} XP</small><div class="xpbar"><i style="width:${(lv.k * 100).toFixed(1)}%"></i></div></span>` +
         `<span class="lv">${levelSvg(lv.L, 38)}<small>рівень</small></span></button>` +
@@ -13954,6 +14017,7 @@ function initStage7(map, maplibregl){
         mbtn("go", "online", ICO.net, "Мережевий фронт", NET.room ? `Ви в кімнаті ${NET.room.code}` : "Онлайн-кімнати", "") +
         mbtn("go", "tours", ICO.tour, "Бойові змагання", "Турніри між командирами", "") +
         mbtn("go", "sandbox", ICO.sand, "Симулятор полігону", "Обидві сторони · вибір режиму", "") +
+        mbtn("go", "settings", ICO.gear, "Налаштування", `Графіка: ${GFX.name()}`, "") +
         mbtn("resume", "", ICO.back, "Повернення в операцію", susp() ? `${MODES[GAME.mode].n} · ${GAME.mode === "free" ? "полігон" : "день " + dayOf(GAME.clock) + ", " + clockHM(GAME.clock)}` : "Немає перерваної операції полігону", "", !susp(), "blue");
       return { side };
     },
@@ -13995,6 +14059,16 @@ function initStage7(map, maplibregl){
           `<button class="s7b sm blue" data-s7="finv" data-v="${f.id}" ${isOnline(f.id) ? "" : "disabled"} title="Запросити до кімнати">Запросити</button><button class="s7b sm ghost" data-s7="fdel" data-v="${f.id}" title="Видалити з друзів">✕</button>`)).join("")
         : `<div class="mm-note">Друзів поки немає. Поділіться своїм ID <b>${PROF.id}</b> або знайдіть командира за його ID.</div>`) + `</div>`;
       return { side: h, acts: `<div class="mm-acts">${mbtn("lb", "", ICO.lb, "Список лідерів", "Ранги й досвід командирів", "", false, "mbig")}${mbtn("go", "tours", ICO.tour, "Бойові змагання", "Турніри", "", false, "mbig")}</div>` };
+    },
+    /* етап 7.54: налаштування — якість графіки */
+    settings(){
+      const O = [[0, "Низька", "Максимальна плавність для слабких телефонів: менше частинок і слідів, без світіння й розмиття, мапа у звичайній чіткості."],
+        [1, "Середня", "Баланс якості й швидкості — рекомендовано для телефонів і онлайн-боїв."],
+        [2, "Висока", "Повна якість, як була в грі: усі ефекти, сліди ракет, світіння, найвища чіткість."]];
+      const h = top("Налаштування") + `<div class="set-sec"><div class="set-h">Якість графіки</div><div class="set-opts">` +
+        O.map(([n, t, d]) => `<button class="set-opt${GFX.lvl === n ? " on" : ""}" data-s7="gfx" data-v="${n}"><span class="set-r"></span><span><b>${t}</b><small>${d}</small></span></button>`).join("") +
+        `</div><div class="mm-note">Діє одразу, і в бою теж. Зберігається на цьому пристрої.${GFX.auto && GFX.phone ? " Для телефона автоматично обрано «Середню»." : ""}</div></div>`;
+      return { side: h };
     },
     scen(){
       const s = UI.sel, M = MODES[s.mode];
@@ -15271,6 +15345,7 @@ function initStage7(map, maplibregl){
   /* ======================= ДІЇ ======================= */
   function act(a, v, b){
     switch (a){
+      case "gfx": GFX.set(+v); toast(`Графіка: ${GFX.name()}`, "ok"); return menuRender();
       case "go": UI.tour = null; UI.scr = v === "scen" ? "scen" : v; menuRender(); if (v === "online" && NET.open) lobbyHb(); if (/^(online|tours|friends)$/.test(v) && S7.site && S7.site.lobby) S7.site.lobby(true); return;
       case "resume": return resumeGame();
       case "bcshop": return S7.shop && S7.shop.open("shop");      // етап 7.38: торговельний майданчик, арсенал, поповнення Bcoin
@@ -15841,38 +15916,32 @@ S7.phone = { toggle: phToggle, unread: phUnread, isOpen: () => PH.open, label: (
    повертається дверима до нас, двері розчиняються, пил, і випадає зброя. Без рідкостей (лише шанси).
    Майданчик і арсенал — у червоному стилі головного меню. Під час бою купувати й відкривати не можна:
    у бою платна техніка лише показує екстрене сповіщення про «Торговельний майданчик».
-   • Баланс Bcoin — лише в головному меню, на майданчику й в арсеналі (угорі). Натиск — панель поповнення
-     (поки без оплати: Bcoin нараховуються одним натиском, за курсом пакетів).
-   • Після бою — шанс отримати трішки Bcoin і (рідше) дешевий контейнер.
+   • Баланс Bcoin — лише в головному меню, на майданчику й в арсеналі (угорі). Натиск — «Як заробити Bcoin».
+   • Етап 7.54: після кожного бою — гарантовані Bcoin (перемога більше), рідше — контейнер; поповнення за гроші немає.
    • Замки — лише в інтерфейсі гравця (бот і команди з мережі не змінюються).
    ====================================================================== */
-const BC_PACKS = [[100, "49,99", 0], [500, "229,99", 8], [1000, "399,99", 20], [3000, "849,99", 43]];      // Bcoin · ₴ · знижка, %
-/* етап 7.46: оплата поповнення — банка Монобанку (₴, лише для України) або USDT у мережі TON ($); ціни в доларах — за курсом ≈ 44,9 ₴ */
-const BC_USD = { 100: "1.15", 500: "5.15", 1000: "8.95", 3000: "18.95" };
-const PAY_MONO = "https://send.monobank.ua/jar/5444CD8rAH";
-const PAY_TON = "UQCLp1U6CkgrsY3LjJePN2oBpBYNLwNiyZ2rDGxlYua6wwt8";
-const PAY_N = { mono: "Банка Монобанку", usdt: "USDT · мережа TON" };
+/* етап 7.54: платне поповнення Bcoin прибрано — валюту заробляють лише в грі (бої, рівні, звання, дублікати) */
 /* ціни платної техніки в Bcoin — за характеристиками й універсальністю (дальність / радіус, ймовірність збиття, класи цілей, швидкість, бойові блоки) */
-const BC_PRICE = {
+const BC_PRICE = {      // етап 7.54: техніка дорожча (×1,8)
   // Україна · наземне ППО
-  sampt: 520, s125: 150, koral: 190, shershen: 170, vampire: 120, stormer: 140, skynex: 160,
+  sampt: 935, s125: 270, koral: 340, shershen: 305, vampire: 215, stormer: 250, skynex: 290,
   // Україна · дрони-перехоплювачі
-  sting: 70, bullet: 70, duck: 60, zirka: 75, strila: 85, burewiy: 85, litavr: 95, alexa: 140, octopus: 110, ueb1: 90, jedi: 90,
+  sting: 125, bullet: 125, duck: 110, zirka: 135, strila: 155, burewiy: 155, litavr: 170, alexa: 250, octopus: 200, ueb1: 160, jedi: 160,
   // Україна · авіація
-  f16: 360, mirage: 300, mi24: 170,
+  f16: 650, mirage: 540, mi24: 305,
   // Україна · повітряні цілі
-  fp2: 90, ruta: 120, uj25: 140, bars: 160, harpoon: 180, taurus: 240, jassm: 280, tomahawk: 320, vilkha: 160, sapsan: 300,
-  aasm: 110, jdamer: 100, gbu39: 90, furia: 55, shark: 60, leleka: 50, spectator: 50,
+  fp2: 160, ruta: 215, uj25: 250, bars: 290, harpoon: 325, taurus: 430, jassm: 505, tomahawk: 575, vilkha: 290, sapsan: 540,
+  aasm: 200, jdamer: 180, gbu39: 160, furia: 100, shark: 110, leleka: 90, spectator: 90,
   // Росія · наземне ППО
-  s500: 640, s300v: 420, s350: 400, kub: 130, strela2: 70,
+  s500: 1150, s300v: 755, s350: 720, kub: 235, strela2: 125,
   // Росія · дрони-перехоплювачі
-  veter: 120, lis2: 110, roscherk: 95, hunt: 80, arhangel: 85, lis: 60,
+  veter: 215, lis2: 200, roscherk: 170, hunt: 145, arhangel: 155, lis: 110,
   // Росія · авіація
-  su35: 420, su30: 350, mi28: 210,
+  su35: 755, su30: 630, mi28: 380,
   // Росія · повітряні цілі (етап 7.39: + Х-32 і Охотник)
-  iskanderk: 260, tochka: 150, onyx: 260, onyxm: 330, kh69: 190, kh58: 200, kh31: 150, kh32: 340, fab500: 100, fab1500: 150, fab3000: 200,
-  italmas: 55, lancet: 60, parodiya: 40, zala: 45, supercam: 50, okhotnik: 160,
-  rubezh: 480, kedr: 540, topolm: 460, yars: 560, bulava: 580, voevoda: 680, sarmat: 720, avangard: 700, burevestnik: 620
+  iskanderk: 470, tochka: 270, onyx: 470, onyxm: 595, kh69: 340, kh58: 360, kh31: 270, kh32: 610, fab500: 180, fab1500: 270, fab3000: 360,
+  italmas: 100, lancet: 110, parodiya: 70, zala: 80, supercam: 90, okhotnik: 290,
+  rubezh: 865, kedr: 970, topolm: 830, yars: 1010, bulava: 1045, voevoda: 1225, sarmat: 1295, avangard: 1260, burevestnik: 1115
 };
 const BC_PAID = {
   ua: { ad: ["sampt", "koral", "s125", "shershen", "skynex", "vampire", "stormer"],
@@ -15890,7 +15959,8 @@ const BC_BOXT = { def: ["Оборона", "ad", "Усі наземні ППО"],
 const BC_SIDE_N = { ua: "Україна", ru: "Росія" };
 const BC_SIDE_C = { ua: "#3d8bff", ru: "#ff3b30" };
 const BC_DUP = 0.4;                   // дублікат із контейнера — повернення 40% ціни в Bcoin
-const BC_DROP = { win: [0.15, 0.025], lose: [0.06, 0.01] };     // етап 7.40: після бою — рідко, але реально: шанс Bcoin, шанс контейнера
+const BC_DROP = { win: [1, 0.08], lose: [1, 0.035] };     // етап 7.54: Bcoin — після кожного бою; шанс контейнера
+const BC_WIN = [45, 75], BC_LOSE = [18, 32];      // етап 7.54: Bcoin за бій (від — до): перемога / поразка чи нічия
 const bcFight = () => !!(GAME.on && !GAME.over && !document.body.classList.contains("s7-menu"));      // етап 7.41: у головному меню купувати можна завжди — обмеження лише в самому бою
 
 /* ---------- профіль: баланс, придбана техніка, контейнери в арсеналі ---------- */
@@ -15923,14 +15993,16 @@ const BC_ITEMS = {}, BC_LIST = [];
 const bcName = it => it.k === "a" ? AD_TYPES[it.key].n : WEAPONS[it.key].n;
 const bcImg = it => it.k === "a" ? adSrc(it.key) : SPRITES[WEAPONS[it.key].img[0]].src;
 const bcOwned = it => !it.paid || PROF.own.includes(it.id);
-/* контейнери: шанс випадіння ∝ ціна^-1,25 (дешевше — частіше); ціна контейнера ≈ 0,85 × очікуваної вартості */
+/* контейнери: шанс випадіння ∝ ціна^-1,25 (дешевше — частіше); етап 7.54: контейнер завжди дешевший за будь-яку техніку в ньому
+   (≈ 0,5 × очікуваної вартості, але не дорожче за 70% найдешевшої техніки контейнера) */
 const BC_BOX = {};
 for (const sd of ["ua", "ru"]) for (const t in BC_BOXT){
   const ids = BC_PAID[sd][BC_BOXT[t][1]].map(k => (t === "str" ? "w:" : "a:") + k).filter(id => BC_ITEMS[id]);
   const w = ids.map(id => Math.pow(BC_ITEMS[id].price, -1.25)), S = w.reduce((a, b) => a + b, 0);
   const drops = ids.map((id, i) => ({ id, ch: w[i] / S })).sort((a, b) => b.ch - a.ch);
   const ev = drops.reduce((a, d) => a + d.ch * BC_ITEMS[d.id].price, 0);
-  BC_BOX[sd + "_" + t] = { id: sd + "_" + t, side: sd, t, drops, price: Math.max(20, Math.round(0.85 * ev / 5) * 5) };
+  const minP = Math.min(...ids.map(id => BC_ITEMS[id].price));
+  BC_BOX[sd + "_" + t] = { id: sd + "_" + t, side: sd, t, drops, price: Math.max(20, Math.floor(Math.min(0.5 * ev, 0.7 * minP) / 5) * 5) };
 }
 const BC_BOX_ORDER = ["ua_def", "ua_int", "ua_air", "ua_str", "ru_def", "ru_int", "ru_air", "ru_str"];
 const bcCheap = sd => BC_BOX_ORDER.filter(b => b.startsWith(sd)).sort((a, b) => BC_BOX[a].price - BC_BOX[b].price).slice(0, 2);
@@ -16062,7 +16134,7 @@ function bcBuild(){
   ly.addEventListener("click", e => { if (e.target === ly && !ly.querySelector(".ct-stagew.busy")) bcDlgClose(); });
   addEventListener("keydown", e => { if (e.key !== "Escape") return; if (BS.dlg) bcDlgClose(); else if (BS.open) bcClose(); });
 }
-const bcBal = () => `<button class="bc-bal" data-bc="topup" title="Поповнити баланс Bcoin">${BC_COIN(26)}<span class="bc-bv"><small>Баланс</small><b>${fmtN(PROF.bc)}</b></span><i>+</i></button>`;
+const bcBal = () => `<button class="bc-bal" data-bc="earn" title="Як заробити Bcoin">${BC_COIN(26)}<span class="bc-bv"><small>Баланс</small><b>${fmtN(PROF.bc)}</b></span><i>?</i></button>`;
 function bcBalSync(){ document.querySelectorAll(".bc-bal .bc-bv b, .bc-tph .bc-bv b").forEach(b => { b.textContent = fmtN(PROF.bc); }); }
 
 function bcOpen(tab){
@@ -16189,7 +16261,7 @@ function bcItemDlg(id, msg){
   const it = BC_ITEMS[id]; if (!it) return;
   const own = bcOwned(it), lack = it.price - PROF.bc;
   const foot = !it.paid ? `<div class="bc-own">Базова техніка — доступна в бою завжди</div>` : own ? `<div class="bc-own ok">✓ Придбано — уже в Арсеналі, доступна в бою</div>` :
-    bcFight() ? bcNoBuy() : lack > 0 ? `<button class="bc-btn" data-bc="topup">Бракує ${fmtN(lack)} ${BC_COIN(15)} · Поповнити</button>` :
+    bcFight() ? bcNoBuy() : lack > 0 ? `<button class="bc-btn ghost" data-bc="earn">Бракує ${fmtN(lack)} ${BC_COIN(15)} · Як заробити</button>` :
     `<button class="bc-btn" data-bc="buy" data-v="${id}">Купити за ${BC_COIN(16)} ${fmtN(it.price)}</button>`;
   bcDlg(`<div class="bc-dhd ${it.side}"><div class="bc-dpic"><img src="${bcImg(it)}" alt=""></div>` +
     `<div class="bc-dti"><small>${BC_SIDE_N[it.side]} · ${BC_CAT[it.cat]} · ${escH(it.sub)}</small><b>${escH(bcName(it))}</b>` +
@@ -16204,74 +16276,19 @@ function bcBoxDlg(id, msg){
     `<div class="bc-dsc"><div class="bc-h4"><span>Шанс випадіння</span><span>Дублікат — повернення ${Math.round(BC_DUP * 100)}% ціни</span></div><div class="bc-drops">` +
     B.drops.map(d => { const it = BC_ITEMS[d.id]; return `<button class="bc-drop ${it.side} ${bcOwned(it) ? "got" : ""}" data-bc="item" data-v="${it.id}">` +
       `<img src="${bcImg(it)}" alt=""><span><b>${escH(bcName(it))}</b><small>${escH(it.sub)}${bcOwned(it) ? " · ✓" : ""}</small></span><em>${bcPct(d.ch)}</em></button>`; }).join("") + `</div></div>` +
-    `<div class="bc-dft">${bcFight() ? bcNoBuy() : lack > 0 ? `<button class="bc-btn" data-bc="topup">Бракує ${fmtN(lack)} ${BC_COIN(15)} · Поповнити</button>` :
+    `<div class="bc-dft">${bcFight() ? bcNoBuy() : lack > 0 ? `<button class="bc-btn ghost" data-bc="earn">Бракує ${fmtN(lack)} ${BC_COIN(15)} · Як заробити</button>` :
       `<button class="bc-btn" data-bc="buybox" data-v="${id}">Купити контейнер за ${BC_COIN(16)} ${fmtN(B.price)}</button>`}</div>`, "box");
 }
-/* ---------- поповнення балансу: пакет → спосіб оплати → дані → сума й реквізити → підтвердження ---------- */
-const TP = { step: "pack", n: 0, pay: "", name: "", uid: "", id: 0, err: "" };
-const tpPack = n => BC_PACKS.find(p => p[0] === n);
-const tpPrice = (n, pay) => pay === "mono" ? `${tpPack(n)[1]} ₴` : `${BC_USD[n]} USDT`;
-const tpSteps = k => { const S = [["pack", "Пакет"], ["pay", "Оплата"], ["form", "Дані"], ["conf", "Підтвердження"]], i = S.findIndex(x => x[0] === k);
-  return `<div class="tp-steps">${S.map((x, j) => `<span class="${j < i ? "ok" : j === i ? "on" : ""}"><i>${j < i ? "✓" : j + 1}</i>${x[1]}</span>`).join("")}</div>`; };
-const tpHead = () => `<div class="bc-tph">${BC_COIN(42)}<div><small>Баланс</small><span class="bc-bv"><b>${fmtN(PROF.bc)}</b></span><em>BCOIN</em></div></div>`;
-const tpSel = () => { const P = tpPack(TP.n); return `<div class="tp-sel">${BC_COIN(20)}<b>${fmtN(TP.n)} Bcoin</b>${P && P[2] ? `<span class="bc-off">−${P[2]}%</span>` : ""}${TP.pay ? `<em>${tpPrice(TP.n, TP.pay)}</em>` : ""}</div>`; };
-function bcTopup(step){
-  if (step) TP.step = step; else { TP.step = "pack"; TP.err = ""; }
-  const st = TP.step, back = to => `<button class="bc-btn ghost" data-bc="tp_go" data-v="${to}">← Назад</button>`;
-  let h = tpHead() + tpSteps(st === "done" ? "x" : st);
-  if (st === "pack"){
-    h += `<div class="bc-h4"><span>Оберіть пакет</span><span>скільки Bcoin купити</span></div><div class="bc-packs">` +
-      BC_PACKS.map(([n, uah, d], i) => `<button class="bc-pack" data-bc="tp_pack" data-v="${n}"><span class="bc-stack">${Array.from({ length: i + 1 }, () => BC_COIN(30)).join("")}</span>` +
-        `<b>${fmtN(n)}</b><small>BCOIN</small><span class="bc-uah">${uah} ₴ · $${BC_USD[n]}</span>${d ? `<span class="bc-off">🔻 −${d}%</span>` : `<span class="bc-off base">базовий курс</span>`}</button>`).join("") + `</div>` +
-      `<div class="bc-note">Оплатити можна гривнею через банку Монобанку (для України) або криптовалютою USDT у мережі TON.</div>`;
-  } else if (st === "pay"){
-    const P = tpPack(TP.n);
-    h += tpSel() + `<div class="bc-h4"><span>Спосіб оплати</span></div><div class="tp-opts">` +
-      `<button class="tp-opt mono" data-bc="tp_pay" data-v="mono"><span class="tp-ic">₴</span><span><b>Банка Монобанку</b><small>Гривня · лише для України</small></span><em>${P[1]} ₴</em></button>` +
-      `<button class="tp-opt usdt" data-bc="tp_pay" data-v="usdt"><span class="tp-ic">₮</span><span><b>Криптовалюта USDT</b><small>Мережа TON · з будь-якої країни</small></span><em>$${BC_USD[TP.n]}</em></button></div>` +
-      `<div class="bc-dft">${back("pack")}</div>`;
-  } else if (st === "form"){
-    h += tpSel() + `<div class="bc-h4"><span>${TP.pay === "mono" ? "Дані платника й гравця" : "Гравець, якому зарахувати Bcoin"}</span></div><div class="tp-form">` +
-      (TP.pay === "mono" ? `<label>Ім'я та прізвище платника<small>Як у вашому Монобанку — за ними ми знайдемо оплату</small><input class="tp-in" id="tpName" maxlength="60" autocomplete="name" placeholder="Напр.: Олена Коваленко" value="${escH(TP.name)}"></label>` : "") +
-      `<label>ID у грі<small>Кому зарахувати Bcoin. Ваш ID — у розділі «Профіль»; можна вказати ID друга</small><input class="tp-in mono" id="tpUid" maxlength="8" autocomplete="off" spellcheck="false" style="text-transform:uppercase" value="${escH(TP.uid || PROF.id)}"></label>` +
-      (TP.err ? `<div class="tp-err">${escH(TP.err)}</div>` : "") + `</div>` +
-      `<div class="bc-dft">${back("pay")}<button class="bc-btn" data-bc="tp_form">Далі</button></div>`;
-  } else if (st === "conf"){
-    const mono = TP.pay === "mono";
-    h += `<div class="bc-h4"><span>До оплати</span></div><div class="tp-sum"><div class="tp-big">${tpPrice(TP.n, TP.pay)}</div>` +
-      `<div class="tp-kv"><span>Пакет</span><b>${fmtN(TP.n)} Bcoin</b><span>Спосіб оплати</span><b>${PAY_N[TP.pay]}</b><span>ID у грі</span><b class="notr">${escH(TP.uid)}</b>${mono ? `<span>Платник</span><b class="notr">${escH(TP.name)}</b>` : ""}</div></div>` +
-      `<div class="bc-h4"><span>Реквізити</span></div><div class="tp-req">` +
-      (mono ? `<small>Банка Монобанку</small><code class="notr">${PAY_MONO}</code><div class="tp-rb"><a class="bc-btn" href="${PAY_MONO}" target="_blank" rel="noopener">Відкрити банку</a><button class="bc-btn ghost" data-bc="tp_copy" data-v="${PAY_MONO}">Копіювати</button></div>` +
-        `<p>Поповніть банку на <b>${tpPrice(TP.n, TP.pay)}</b>. У коментарі до платежу вкажіть ваш ID: <b class="notr">${escH(TP.uid)}</b>.</p>`
-      : `<small>Адреса гаманця · USDT у мережі TON</small><code class="notr">${PAY_TON}</code><div class="tp-rb"><button class="bc-btn" data-bc="tp_copy" data-v="${PAY_TON}">Копіювати адресу</button></div>` +
-        `<p>Надішліть рівно <b>${tpPrice(TP.n, TP.pay)}</b>. У коментарі (memo) до переказу вкажіть ваш ID: <b class="notr">${escH(TP.uid)}</b>.</p>` +
-        `<p class="tp-warn">Лише USDT у мережі TON. Монети інших мереж (TRC-20, ERC-20 тощо) на цю адресу буде втрачено.</p>`) + `</div>` +
-      (TP.err ? `<div class="tp-err">${escH(TP.err)}</div>` : "") +
-      `<div class="bc-note">Спершу оплатіть, потім натисніть «Підтвердити оплату» — ми отримаємо заявку й перевіримо платіж.</div>` +
-      `<div class="bc-dft">${back("form")}<button class="bc-btn" data-bc="tp_send">Підтвердити оплату</button></div>`;
-  } else if (st === "done"){
-    h += `<div class="tp-done"><div class="tp-ok">✓</div><b>Зачекайте!</b><p>Заявку${TP.id ? ` №${TP.id}` : ""} прийнято. Щойно ми перевіримо оплату, <b>${fmtN(TP.n)} Bcoin</b> зарахуються на ID <b class="notr">${escH(TP.uid)}</b> автоматично — оновлювати гру не потрібно, монети з'являться самі. Зазвичай це займає до години.</p>` +
-      `<p class="tp-warn">З 23:00 до 07:00 (за Києвом) зарахування може сповільнитися — до ранку.</p>` +
-      `<div class="bc-dft"><button class="bc-btn" data-bc="dlgx">Добре</button></div></div>`;
-  }
-  bcDlg(h, "top tp");
-}
-async function tpCopy(v, b){
-  let ok = false;
-  try { await navigator.clipboard.writeText(v); ok = true; } catch (e) {
-    try { const t = document.createElement("textarea"); t.value = v; t.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(t); t.select(); ok = document.execCommand("copy"); t.remove(); } catch (e2) {}
-  }
-  toast(ok ? "Скопійовано" : v);
-  if (b && ok){ const o = b.textContent; b.textContent = "✓ Скопійовано"; setTimeout(() => { if (b.isConnected) b.textContent = o; }, 1600); }
-}
-async function tpSend(b){
-  if (!(S7.site && S7.site.on())){ TP.err = "Поповнення працює лише на сайті гри — відкрийте гру за її адресою в інтернеті."; return bcTopup("conf"); }
-  b.disabled = true; b.textContent = "Надсилання…";
-  const r = await S7.site.topup({ n: TP.n, pay: TP.pay, name: TP.name, uid: TP.uid });
-  if (r && r.ok){ TP.id = r.id; TP.err = ""; return bcTopup("done"); }
-  TP.err = r && r.err === "many" ? "У вас уже 5 заявок, що чекають перевірки. Зачекайте, доки ми їх опрацюємо." :
-    r && r.err === "name" ? "Вкажіть ім'я та прізвище платника." : r && r.err === "uid" ? "Перевірте ID у грі." : "Немає зв'язку із сервером — спробуйте ще раз.";
-  bcTopup("conf");
+/* ---------- етап 7.54: як заробити Bcoin (замість платного поповнення) ---------- */
+function bcEarn(){
+  const row = (t, v) => `<tr><td>${t}</td><td>${v}</td></tr>`;
+  bcDlg(`<div class="bc-tph">${BC_COIN(42)}<div><small>Баланс</small><span class="bc-bv"><b>${fmtN(PROF.bc)}</b></span><em>BCOIN</em></div></div>` +
+    `<div class="bc-h4"><span>Як заробити Bcoin</span><span>лише в грі</span></div><table class="xpt">` +
+    row("Перемога в бою", `+${BC_WIN[0]}–${BC_WIN[1]}`) + row("Поразка чи нічия", `+${BC_LOSE[0]}–${BC_LOSE[1]}`) +
+    row("Новий рівень", "+15 (більше на вищих рівнях)") + row("Нове звання", "+75 і більше · з офіцерських — шанс контейнера") +
+    row("Дублікат із контейнера", `${Math.round(BC_DUP * 100)}% ціни техніки`) + row("Контейнер після бою", `шанс ${bcPct(BC_DROP.win[1])} / ${bcPct(BC_DROP.lose[1])}`) + `</table>` +
+    `<div class="bc-note">Контейнери завжди дешевші за техніку, яка з них випадає. Грайте бої — і Bcoin накопичуються.</div>` +
+    `<div class="bc-dft"><button class="bc-btn" data-bc="dlgx">Добре</button></div>`, "top tp");
 }
 function bcFlyCoins(n, from){
   const el = document.createElement("div"); el.className = "bc-fly"; el.innerHTML = `${BC_COIN(22)}<b>+${fmtN(n)}</b>`;
@@ -16321,20 +16338,7 @@ function bcClick(e){
     case "item": return bcItemDlg(v);
     case "box": return bcBoxDlg(v);
     case "dlgx": return bcDlgClose();
-    case "topup": return bcTopup();
-    case "tp_pack": TP.n = +v; TP.pay = ""; TP.err = ""; return bcTopup("pay");
-    case "tp_pay": TP.pay = v; TP.err = ""; return bcTopup("form");
-    case "tp_go": TP.err = ""; return bcTopup(v);
-    case "tp_form": {
-      const nm = bcEl("tpName"), ui = bcEl("tpUid");
-      if (nm) TP.name = nm.value.replace(/\s+/g, " ").trim();
-      TP.uid = (ui ? ui.value : "").trim().toUpperCase();
-      if (TP.pay === "mono" && (TP.name.length < 3 || TP.name.split(" ").length < 2)){ TP.err = "Вкажіть ім'я та прізвище платника — як у Монобанку."; return bcTopup("form"); }
-      if (!/^[A-Z0-9]{8}$/.test(TP.uid)){ TP.err = "ID у грі — 8 символів (латинські букви й цифри), як у профілі."; return bcTopup("form"); }
-      TP.err = ""; return bcTopup("conf");
-    }
-    case "tp_copy": return tpCopy(v, b);
-    case "tp_send": return tpSend(b);
+    case "earn": case "topup": return bcEarn();
     case "buy": {
       const it = BC_ITEMS[v]; if (!it || bcOwned(it)) return;
       if (bcFight() || PROF.bc < it.price) return bcItemDlg(v);
@@ -16373,7 +16377,7 @@ Object.assign(HOOKS, {
 /* ---------- трофеї бою: шанс трішки Bcoin і (рідше) дешевого контейнера ---------- */
 function bcBattle(res, xs){
   const win = res.winner === xs, P = win ? BC_DROP.win : BC_DROP.lose, r = { bc: 0, box: null, win };
-  if (Math.random() < P[0]) r.bc = win ? 8 + Math.floor(Math.random() * 13) : 4 + Math.floor(Math.random() * 7);
+  if (Math.random() < P[0]){ const R = win ? BC_WIN : BC_LOSE; r.bc = R[0] + Math.floor(Math.random() * (R[1] - R[0] + 1)); }
   if (Math.random() < P[1]){ const ch = bcCheap(xs); r.box = ch[Math.floor(Math.random() * ch.length)]; PROF.bcN = (PROF.bcN | 0) + 1; PROF.inv.push({ u: PROF.bcN, c: r.box, at: Date.now(), drop: 1 }); }
   PROF.bc += r.bc; saveProf();
   return r;
@@ -16384,7 +16388,7 @@ function bcResCard(r){
   if (r.box){ const B = BC_BOX[r.box]; h += `<div class="bc-rsr box"><span class="bc-rsb">${ctModel(r.box, "mini")}</span><div><b>Контейнер «${BC_BOXT[B.t][0]}»</b><small>${BC_SIDE_N[B.side]} · уже в Арсеналі — відкрийте в меню</small></div></div>`; }
   if (!r.bc && !r.box) h += `<div class="mm-note">Цього разу без трофеїв.</div>`;
   const P = BC_DROP;
-  return h + `<div class="mm-note">Шанс після кожного бою · Bcoin: ${bcPct(P.win[0])} / ${bcPct(P.lose[0])} · дешевий контейнер: ${bcPct(P.win[1])} / ${bcPct(P.lose[1])} (перемога / поразка)</div></div>`;
+  return h + `<div class="mm-note">Після кожного бою · Bcoin: ${BC_WIN[0]}–${BC_WIN[1]} за перемогу, ${BC_LOSE[0]}–${BC_LOSE[1]} за поразку чи нічию · шанс дешевого контейнера: ${bcPct(P.win[1])} / ${bcPct(P.lose[1])}</div></div>`;
 }
 
 /* ---------- етап 7.40: нагороди за новий рівень і нове звання ----------
@@ -16393,10 +16397,10 @@ const bcStepN = k => k < RANKS.length ? RANKS[k][0] : `${RANKS[RANKS.length - 1]
 function bcLevelUp(x0, x1, r0, r1, sd){
   const out = { lv: [], rk: [], bc: 0 };
   const L0 = levelOf(x0).L, L1 = levelOf(x1).L;
-  for (let L = L0 + 1; L <= L1; L++){ const n = 5 * (1 + Math.floor(L / 10)); out.lv.push([L, n]); out.bc += n; }
+  for (let L = L0 + 1; L <= L1; L++){ const n = 15 * (1 + Math.floor(L / 10)); out.lv.push([L, n]); out.bc += n; }      // етап 7.54: утричі більше
   const a = rankOf(r0).step, b = rankOf(r1).step;
   for (let k = a + 1; k <= b; k++){
-    const n = 20 + 10 * k; let box = null;
+    const n = 50 + 25 * k; let box = null;      // етап 7.54: більше за звання
     if (k >= 11 && Math.random() < (k >= 18 ? 0.5 : 0.3)){
       const pool = k >= 18 ? BC_BOX_ORDER.filter(c => c.startsWith(sd)) : bcCheap(sd);
       box = pool[Math.floor(Math.random() * pool.length)]; PROF.bcN = (PROF.bcN | 0) + 1; PROF.inv.push({ u: PROF.bcN, c: box, at: Date.now(), drop: 2 });
@@ -16419,7 +16423,7 @@ const BC_ICO = {
   shop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 9.5 5 4h14l2 5.5"/><path d="M3 9.5h18v1.2a2.6 2.6 0 0 1-4.5 1.8 2.6 2.6 0 0 1-4.5 0 2.6 2.6 0 0 1-4.5 0A2.6 2.6 0 0 1 3 10.7Z"/><path d="M5 13.5V20h14v-6.5"/><path d="M10 20v-4h4v4"/></svg>`,
   ars: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="7" width="19" height="12" rx="1"/><path d="M2.5 10h19"/><path d="M8 7V4.5h8V7"/><path d="M12 13v3M10.5 14.5h3" stroke-linecap="round"/></svg>`
 };
-S7.shop = { sync: bcBalSync, ICO: BC_ICO, levelUp: bcLevelUp, upCard: bcUpCard, open: bcOpen, close: bcClose, topup: bcTopup, isOpen: () => BS.open, battle: bcBattle, resCard: bcResCard, coin: BC_COIN, bal: bcBal,
+S7.shop = { sync: bcBalSync, ICO: BC_ICO, levelUp: bcLevelUp, upCard: bcUpCard, open: bcOpen, close: bcClose, topup: bcEarn, earn: bcEarn, isOpen: () => BS.open, battle: bcBattle, resCard: bcResCard, coin: BC_COIN, bal: bcBal,
             ITEMS: BC_ITEMS, BOX: BC_BOX, locked: bcLocked, sort: bcSort, openBox: bcOpenBox, state: BS, model: ctModel, fight: bcFight,
             buy: id => { const it = BC_ITEMS[id]; if (!it || bcOwned(it) || PROF.bc < it.price || bcFight()) return false; PROF.bc -= it.price; PROF.own.push(id); saveProf(); return true; } };
 
@@ -16514,7 +16518,7 @@ async function sitePing(){
         else if (x.uid !== PROF.id) siteNote(`Заявку №${x.id} підтверджено: ${fmtN(x.n)} Bcoin зараховано гравцеві ${x.uid}`, "ok");
       }
       // власникам — нові заявки на поповнення
-      if (r.tp){ const was = SITE.tpN; SITE.tpN = r.tp.n | 0;
+      if (false && r.tp){ const was = SITE.tpN; SITE.tpN = r.tp.n | 0;      // етап 7.54: поповнення прибрано
         if (SITE.tpLast >= 0 && r.tp.last > SITE.tpLast && SITE.tpN > 0) siteNote(`Нова заявка на поповнення Bcoin · в очікуванні: ${SITE.tpN}`, "ok");
         SITE.tpLast = r.tp.last | 0; if (was !== SITE.tpN){ S7.menuRender && S7.menuRender(); if (S7.mdl === "adm") admTpLoad(); } }
       if (SITE.mack.length || SITE.tack.length) setTimeout(sitePing, 1500);
@@ -16632,7 +16636,7 @@ function siteRun(){
   setTimeout(() => { sitePing(); siteTicks(); }, 2500);
   setInterval(() => { if (!document.hidden) sitePing(); }, 120000);
   setInterval(() => { if (!document.hidden) siteTicks(); }, 300000);
-  setInterval(() => { if (S7.mdl === "adm" && !document.hidden){ admTpLoad(); admStLoad(true); } }, 15000);
+  setInterval(() => { if (S7.mdl === "adm" && !document.hidden) admStLoad(true); }, 15000);
   setInterval(() => siteLobby(false), 2500); setTimeout(() => siteLobby(true), 1500);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - SITE.tT > 60000){ SITE.tT = Date.now(); sitePing(); } });
 }
@@ -16659,8 +16663,7 @@ function admOpen(){
   if (!SITE.on || !SITE.admin || !S7.modal) return;
   const chips = ["red", "blue", "green"].map(c => `<button class="c7 adm-tc ${ADM.tc === c ? "on" : ""}" data-adm="tc" data-v="${c}">${tickSvg(TICK_C[c], 14)} ${TICK_N[c]}</button>`).join("") +
     `<button class="c7 adm-tc ${ADM.tc === "none" ? "on" : ""}" data-adm="tc" data-v="none">Прибрати</button>`;
-  S7.modal(`<h3 class="adm-h">${tickSvg("#ffcc33", 20)} Адмін панель</h3><div class="sub">Заявки на поповнення, нагороди й галочки командирів. Видно лише на пристроях власників.</div>` +
-    `<div class="adm-sec adm-tp"><div class="adm-t"><span>Заявки на поповнення</span><span class="adm-n" id="admTpN"></span></div><div id="admTp"><div class="mm-note">Завантаження…</div></div></div>` +
+  S7.modal(`<h3 class="adm-h">${tickSvg("#ffcc33", 20)} Адмін панель</h3><div class="sub">Нагороди, галочки командирів, адміністратори й статистика. Видно лише на пристроях власників.</div>` +
     `<div class="adm-sec"><div class="adm-t"><span>Статистика</span><button class="s7b sm ghost" data-adm="st">Оновити</button></div><div id="admSt" class="adm-st"><div class="mm-note">Завантаження…</div></div></div>` +
     `<div class="adm-sec adm-ads"><div class="adm-t"><span>Адміністратори</span><span class="adm-n" id="admAdN"></span></div><div id="admAd"><div class="mm-note">Завантаження…</div></div>` +
     `<div class="adm-t adm-kt"><span>Ключ власників</span></div><div class="adm-key"><code id="admKeyCur" class="notr">…</code><button class="s7b sm ghost" data-adm="kcp">Копіювати</button></div>` +
@@ -16702,7 +16705,7 @@ function admTpRender(){
   e.innerHTML = (T.wait.length ? T.wait.map(card).join("") : `<div class="mm-note">Нових заявок немає. Коли гравець оплатить і підтвердить поповнення, заявка з'явиться тут.</div>`) +
     (T.hist.length ? `<details class="adm-tphist"><summary>Опрацьовані заявки · ${T.hist.length}</summary>${T.hist.map(card).join("")}</details>` : "");
 }
-function admLoad(){ admTpLoad(); admStLoad(false); admAdLoad(); }
+function admLoad(){ admStLoad(false); admAdLoad(); }      // етап 7.54: платне поповнення прибрано — заявок немає
 /* етап 7.49: хто має адмін-панель + ключ власників */
 const uaTxt = ua => {
   ua = String(ua || "");
@@ -16891,6 +16894,7 @@ function start(){
 
   const cam0 = cameraFor(UA_BOUNDS);
   const map = new maplibregl.Map({
+    pixelRatio: GFX.dprMap(),      // етап 7.54: якість графіки
     container: "map",
     style: buildStyle(),
     center: cam0.center,
@@ -16907,7 +16911,7 @@ function start(){
     fadeDuration: 180,
     localIdeographFontFamily: false
   });
-  window.bvMap = map;
+  window.bvMap = map; GFX.apply();
   map.touchZoomRotate.disableRotation();
   map.keyboard.disableRotation && map.keyboard.disableRotation();
 
